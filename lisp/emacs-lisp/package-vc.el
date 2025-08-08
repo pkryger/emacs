@@ -160,18 +160,28 @@ All other values are ignored.")
   "Retrieve the package specification for PKG-DESC.
 The optional argument NAME can be used to override the default
 name for PKG-DESC."
-  (alist-get
-   (setq name (or name (package-desc-name pkg-desc)))
-   (if (and (package-desc-archive pkg-desc)
-            (not (alist-get name package-vc-selected-packages
-                            nil nil #'string=)))
-       (alist-get (intern (package-desc-archive pkg-desc))
-                  package-vc--archive-spec-alists)
-     ;; Consult both our local list of package specifications, as well
-     ;; as the lists provided by the archives.
-     (apply #'append (cons package-vc-selected-packages
-                           (mapcar #'cdr package-vc--archive-spec-alists))))
-   '() nil #'string=))
+  (let ((name (or name (package-desc-name pkg-desc))))
+    (or
+     (alist-get
+      name
+      (if (and (package-desc-archive pkg-desc)
+               (not (alist-get name package-vc-selected-packages
+                               nil nil #'string=)))
+          (alist-get (intern (package-desc-archive pkg-desc))
+                     package-vc--archive-spec-alists)
+        ;; Consult both our local list of package specifications, as well
+        ;; as the lists provided by the archives.
+        (apply #'append (cons package-vc-selected-packages
+                              (mapcar #'cdr package-vc--archive-spec-alists))))
+      '() nil #'string=)
+     (when-let* ((autoloads (expand-file-name (format "%s-autoloads.el" name)
+                                              (package-desc-dir pkg-desc)))
+                 ((file-exists-p autoloads)))
+       (with-temp-buffer
+         (insert-file-contents autoloads)
+         (ignore-errors
+           (read (lm-header "package-spec"))))))))
+
 
 (defun package-vc--read-archive-data (archive)
   "Update `package-vc--archive-spec-alists' for ARCHIVE.
@@ -508,7 +518,14 @@ documentation and marking the package as installed."
         (when lisp-dir
           (write-region
            (with-temp-buffer
-             (insert ";; Autoload indirection for package-vc\n\n")
+             (insert ";; Autoload indirection for package-vc\n")
+             (insert ";; Package-spec: ")
+             ;; Store the pkg-spec such that it can be reused by
+             ;; `package-rebuild' and `package-vc-upgrade' to restore
+             ;; the same conditions as were when the indirection has
+             ;; been created for the first time.
+             (prin1 pkg-spec (current-buffer))
+             (insert "\n\n")
              (prin1 `(load (expand-file-name
                             ,(expand-file-name auto-name lisp-dir)
                             (or (and load-file-name
@@ -757,6 +774,9 @@ with the remote repository state."
   ;; If there is a better way to do this, it should be done.
   (cl-assert (package-vc-p pkg-desc))
   (letrec ((pkg-dir (package-desc-dir pkg-desc))
+           (checkout-dir (or (plist-get (package-vc--desc->spec pkg-desc)
+                                        :lisp-dir)
+                             pkg-dir))
            (vc-flags)
            (vc-filter-command-function
             (lambda (command file-or-list flags)
@@ -764,7 +784,7 @@ with the remote repository state."
               (list command file-or-list flags)))
            (post-upgrade
             (lambda (_command _file-or-list flags)
-              (when (and (file-equal-p pkg-dir default-directory)
+              (when (and (file-equal-p checkout-dir default-directory)
                          (eq flags vc-flags))
                 (unwind-protect
                     (with-demoted-errors "Failed to activate: %S"
@@ -774,8 +794,8 @@ with the remote repository state."
     (with-demoted-errors "Failed to fetch: %S"
       (require 'vc-dir)
       (with-current-buffer (vc-dir-prepare-status-buffer
-                            (format " *package-vc-dir: %s*" pkg-dir)
-                            pkg-dir (vc-responsible-backend pkg-dir))
+                            (format " *package-vc-dir: %s*" checkout-dir)
+                            checkout-dir (vc-responsible-backend checkout-dir))
         (vc-pull)))))
 
 (defun package-vc--archives-initialize ()
