@@ -546,7 +546,14 @@ documentation and marking the package as installed."
         ;; FIXME: Compilation should be done as a separate, optional, step.
         ;; E.g. for multi-package installs, we should first install all packages
         ;; and then compile them.
-        (package--compile new-desc)
+        (package--compile
+         (if lisp-dir
+             ;; In case we are installing a package from a local
+             ;; checkout, we want to compile the checkout, not the
+             ;; redirection!
+             (package-desc-create :dir lisp-dir)
+          new-desc))
+
         (when package-native-compile
           (package--native-compile-async new-desc))
         ;; After compilation, load again any files loaded by
