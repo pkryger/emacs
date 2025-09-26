@@ -31,8 +31,7 @@
 ;; aren't interested in activating a package, you can use
 ;; `package-vc-checkout' instead, which will prompt you for a target
 ;; directory.  If you wish to reuse an existing checkout, the command
-;; `package-vc-install-from-checkout' will create a symbolic link and
-;; prepare the package.
+;; `package-vc-install-from-checkout' will prepare the package.
 ;;
 ;; If you make local changes that you wish to share with an upstream
 ;; maintainer, the command `package-vc-prepare-patch' can prepare
@@ -569,7 +568,8 @@ documentation and marking the package as installed."
         (setf (cdr pkgs) (seq-remove #'package-vc-p (cdr pkgs)))))
 
     ;; Update package-alist.
-    (let ((new-desc (package-load-descriptor pkg-dir)))
+    (let ((new-desc (package-load-descriptor pkg-dir))
+          (compile-desc (package-desc-create :dir lisp-dir)))
       ;; Activation has to be done before compilation, so that if we're
       ;; upgrading and macros have changed we load the new definitions
       ;; before compiling.
@@ -577,9 +577,9 @@ documentation and marking the package as installed."
         ;; FIXME: Compilation should be done as a separate, optional, step.
         ;; E.g. for multi-package installs, we should first install all packages
         ;; and then compile them.
-        (package--compile (package-desc-create :dir lisp-dir))
+        (package--compile compile-desc)
         (when package-native-compile
-          (package--native-compile-async new-desc))
+          (package--native-compile-async compile-desc))
         ;; After compilation, load again any files loaded by
         ;; `activate-1', so that we use the byte-compiled definitions.
         (package--reload-previously-loaded new-desc)))
@@ -967,17 +967,15 @@ interactively), DIR must be an absolute file name."
   (package-vc--archives-initialize)
   (let* ((dir (if interactive dir (expand-file-name dir))) ;avoid double expansion
          (name (or name (file-name-base (directory-file-name dir))))
-         (pkg-dir (file-name-concat package-user-dir name))
-         (package-vc-selected-packages
-          (cons (list name :lisp-dir dir)
-                package-vc-selected-packages)))
+         (pkg-dir (file-name-concat package-user-dir name)))
     (when (file-exists-p pkg-dir)
       (if (yes-or-no-p (format "Overwrite previous checkout for package `%s'?" name))
           (package--delete-directory pkg-dir)
         (error "There already exists a checkout for %s" name)))
     (make-directory pkg-dir t)
-    ;; We store a custom package specification so that
-    ;; `package-vc--checkout-dir' can later retrieve the actual checkout.
+    ;; We store a custom package specification so that it is available
+    ;; for `package-vc--unpack-1' as well as `package-vc--checkout-dir'
+    ;; can later retrieve the actual checkout.
     (package-vc--save-selected-packages name (list :url (concat "file://" dir)))
     (package-vc--unpack-1
      (package-desc-create
