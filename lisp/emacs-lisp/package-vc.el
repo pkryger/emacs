@@ -468,13 +468,15 @@ this function successfully installs all given dependencies)."
     (mapc #'package-install-from-archive to-install)
     missing))
 
-(defun package-vc--unpack-1 (pkg-desc pkg-dir)
-  "Prepare PKG-DESC that is already checked-out in PKG-DIR.
-This includes downloading missing dependencies, generating
-autoloads, generating a package description file (used to
-identify a package as a VC package later on), building
-documentation and marking the package as installed."
-  (let* ((pkg-spec (package-vc--desc->spec pkg-desc))
+(defun package-vc--unpack-1 (pkg-desc)
+  "Prepare PKG-DESC that is already checked-out.
+The checkout directory is determined by relevant pkg-spec or from `dir'
+slot of PKG-DESC.  This includes downloading missing dependencies,
+generating autoloads, generating a package description file (used to
+identify a package as a VC package later on), building documentation and
+marking the package as installed."
+  (let* ((pkg-dir (package-desc-dir pkg-desc))
+         (pkg-spec (package-vc--desc->spec pkg-desc))
          (checkout-dir (package-vc--checkout-dir pkg-desc))
          (lisp-dir (package-vc--checkout-dir pkg-desc 'lisp-dir))
          missing)
@@ -568,12 +570,24 @@ documentation and marking the package as installed."
         (setf (cdr pkgs) (seq-remove #'package-vc-p (cdr pkgs)))))
 
     ;; Update package-alist.
-    (let ((new-desc (package-load-descriptor pkg-dir))
-          (compile-desc (package-desc-create :dir lisp-dir)))
+    (let* ((new-desc (package-load-descriptor pkg-dir))
+           (compile-desc (package-desc-create :name (package-desc-name new-desc)
+                                              :dir lisp-dir)))
       ;; Activation has to be done before compilation, so that if we're
       ;; upgrading and macros have changed we load the new definitions
       ;; before compiling.
       (when (package-activate-1 new-desc :reload :deps)
+        ;; `package-activate-1' will reload all necessary package files
+        ;; as long as they are locate in a subdirectory of `pkg-dir'.
+        ;; If that's not the case, we want to reload all package files
+        ;; from the `lisp-dir' before compilation.
+        (unless (file-in-directory-p lisp-dir pkg-dir)
+          (package--reload-previously-loaded compile-desc))
+        ;; `package-activate-1' will add info node as long as dir file
+        ;; exists in `pkg-dir'.  We need to manually add it when
+        ;; `checkout-dir' is in different location.
+        (unless (file-equal-p pkg-dir checkout-dir)
+          (package--add-info-node checkout-dir))
         ;; FIXME: Compilation should be done as a separate, optional, step.
         ;; E.g. for multi-package installs, we should first install all packages
         ;; and then compile them.
@@ -581,8 +595,10 @@ documentation and marking the package as installed."
         (when package-native-compile
           (package--native-compile-async compile-desc))
         ;; After compilation, load again any files loaded by
-        ;; `activate-1', so that we use the byte-compiled definitions.
-        (package--reload-previously-loaded new-desc)))
+        ;; `package-activate-1', so that we use the byte-compiled
+        ;; definitions.  This time we'll use `compile-desc' straight
+        ;; away.
+        (package--reload-previously-loaded compile-desc)))
 
     ;; Mark package as selected
     (let ((name (package-desc-name pkg-desc)))
@@ -715,7 +731,7 @@ abort installation?" name))
     (when (null (package-vc--desc->spec pkg-desc name))
       (package-vc--save-selected-packages name pkg-spec))
 
-    (package-vc--unpack-1 pkg-desc pkg-dir)))
+    (package-vc--unpack-1 pkg-desc)))
 
 (defun package-vc--read-package-name (prompt &optional allow-url installed)
   "Query the user for a VC package and return a name with PROMPT.
@@ -783,7 +799,7 @@ with the remote repository state."
   ;;
   ;; If there is a better way to do this, it should be done.
   (cl-assert (package-vc-p pkg-desc))
-  (letrec ((pkg-dir (package-vc--checkout-dir pkg-desc))
+  (letrec ((checkout-dir (package-vc--checkout-dir pkg-desc))
            (vc-flags)
            (vc-filter-command-function
             (lambda (command file-or-list flags)
@@ -791,18 +807,19 @@ with the remote repository state."
               (list command file-or-list flags)))
            (post-upgrade
             (lambda (_command _file-or-list flags)
-              (when (and (file-equal-p pkg-dir default-directory)
+              (when (and (file-equal-p checkout-dir default-directory)
                          (eq flags vc-flags))
                 (unwind-protect
                     (with-demoted-errors "Failed to activate: %S"
-                      (package-vc--unpack-1 pkg-desc pkg-dir))
+                      (package-vc--unpack-1 pkg-desc))
                   (remove-hook 'vc-post-command-functions post-upgrade))))))
     (add-hook 'vc-post-command-functions post-upgrade)
     (with-demoted-errors "Failed to fetch: %S"
       (require 'vc-dir)
       (with-current-buffer (vc-dir-prepare-status-buffer
-                            (format " *package-vc-dir: %s*" pkg-dir)
-                            pkg-dir (vc-responsible-backend pkg-dir))
+                            (format " *package-vc-dir: %s*" checkout-dir)
+                            checkout-dir
+                            (vc-responsible-backend checkout-dir))
         (vc-pull)))))
 
 (defun package-vc--archives-initialize ()
@@ -981,8 +998,7 @@ interactively), DIR must be an absolute file name."
      (package-desc-create
       :name (intern name)
       :dir pkg-dir
-      :kind 'vc)
-     (file-name-as-directory pkg-dir))))
+      :kind 'vc))))
 
 ;;;###autoload
 (defun package-vc-rebuild (pkg-desc)
@@ -994,7 +1010,7 @@ command does not fetch new revisions from a remote server.  That
 is the responsibility of `package-vc-upgrade'.  Interactively,
 prompt for the name of the package to rebuild."
   (interactive (list (package-vc--read-package-desc "Rebuild package: " t)))
-  (package-vc--unpack-1 pkg-desc (package-vc--checkout-dir pkg-desc)))
+  (package-vc--unpack-1 pkg-desc))
 
 ;;;###autoload
 (defun package-vc-prepare-patch (pkg-desc subject revisions)
