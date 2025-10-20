@@ -112,8 +112,12 @@
     (test-package-3 . ,(expand-file-name "test-package-3" package-vc-tests-dir))
     ;; checkout with git and install with `package-vc-install-from-checkout'
     (test-package-4 . ,(expand-file-name "test-package-4" package-vc-tests-dir))
-    ;; TODO: a package with source files in lisp/ directory (both methods of
-    ;; installation)
+    ;; sources in "lisp" sub directory, checkout and intstall with
+    ;; `package-vc-install'
+    (test-package-5 . ,(expand-file-name "test-package-5" package-user-dir))
+    ;; sources in "lisp" sub directory, checkout with git and install
+    ;; with `package-vc-install-from-checkout'
+    (test-package-6 . ,(expand-file-name "test-package-6" package-vc-tests-dir))
 
     ;; TODO: a package with source files in a non-standard :lisp-dir (both
     ;; methods of installation)
@@ -135,9 +139,17 @@ is to mimic `package-vc--read-package-desc'."
                (if installed package-alist package-archive-contents)
                #'string=)))
 
-(defun package-vc-tests-package-main-file (pkg-checkout-dir)
-  "Return a main file of PKG-CHECKOUT-DIR."
-  (format "%s/%s.el" (cdr pkg-checkout-dir) (car pkg-checkout-dir)))
+(defun package-vc-tests-package-lisp-dir (pkg)
+  "Return a Lisp directory of PKG."
+  (when-let* ((checkout-dir (alist-get pkg package-vc-tests-packages)))
+    (cond
+     ((member pkg '(test-package-5 test-package-6))
+      (expand-file-name "lisp" checkout-dir))
+     (t checkout-dir))))
+
+(defun package-vc-tests-package-main-file (pkg)
+  "Return a main file of PKG."
+  (format "%s/%s.el" (package-vc-tests-package-lisp-dir pkg) pkg))
 
 (defun package-vc-tests-load-history-position (pkg type)
   "Return a PKG's position in `load-history'.
@@ -155,14 +167,12 @@ position of a marker PKG."
                     (:main
                      (rx-to-string
                       `(seq ,(format "%s"
-                                     (package-vc-tests-package-main-file
-                                      (assoc pkg package-vc-tests-packages)))
+                                     (package-vc-tests-package-main-file pkg))
                             string-end)))
                     (:main-compiled
                      (rx-to-string
                       `(seq ,(format "%s"
-                                     (package-vc-tests-package-main-file
-                                      (assoc pkg package-vc-tests-packages)))
+                                     (package-vc-tests-package-main-file pkg))
                             "c"
                             string-end)))
                     (:marker
@@ -182,12 +192,11 @@ position of a marker PKG."
 (defun package-vc-tests-assert-delete-elc ()
   "Assert that .elc files are in expected directories and delete them.
 When ALL is non nil, check all packages under test."
-  (dolist (pkg-checkout-dir package-vc-tests-packages)
-    (let* ((dir (cdr pkg-checkout-dir))
+  (dolist (pkg (mapcar #'car package-vc-tests-packages))
+    (let* ((dir (package-vc-tests-package-lisp-dir pkg))
            (elc-files (directory-files dir nil (rx ".elc" string-end)))
            (autoloads-rx (rx-to-string
-                          `(seq ,(format "%s" (car pkg-checkout-dir))
-                                "-autoloads.elc"
+                          `(seq ,(format "%s-autoloads.el" pkg)
                                 string-end))))
       (should-not (equal (cons dir elc-files)
                          (list dir)))
@@ -265,6 +274,28 @@ When ALL is non nil, check all packages under test."
                                          nil nil #'string=)
                               :url))))
 
+  (let ((bundle (format "%s/test-package-5.bundle" package-vc-tests-resources-dir)))
+    (package-vc-install `(test-package-5
+                          :url ,bundle
+                          :branch "master"))
+   (should (equal bundle
+                  (plist-get (alist-get "test-package-5"
+                                        package-vc-selected-packages
+                                        nil nil #'string=)
+                             :url))))
+
+  (let ((checkout-dir (expand-file-name "test-package-6" package-vc-tests-dir)))
+    (shell-command
+     (format "git clone -b master %s/test-package-6.bundle %s"
+             package-vc-tests-resources-dir
+             checkout-dir))
+    (package-vc-install-from-checkout checkout-dir "test-package-6")
+    (should (equal (format "file://%s" checkout-dir)
+                   (plist-get (alist-get "test-package-6"
+                                         package-vc-selected-packages
+                                         nil nil #'string=)
+                              :url))))
+
   (push (list (format "%s/install-end" package-vc-tests-dir))
         load-history)
 
@@ -272,10 +303,10 @@ When ALL is non nil, check all packages under test."
   (package-vc-tests-assert-delete-elc))
 
 (ert-deftest package-vc-tests-001-main-file ()
- (dolist (pkg-checkout-dir package-vc-tests-packages)
+ (dolist (pkg (mapcar #'car package-vc-tests-packages))
    (should (equal (package-vc--main-file
-                   (package-vc-tests-package-desc (car pkg-checkout-dir) t))
-                  (package-vc-tests-package-main-file pkg-checkout-dir)))))
+                   (package-vc-tests-package-desc pkg t))
+                  (package-vc-tests-package-main-file pkg)))))
 
 (ert-deftest package-vc-tests-002-commit ()
  (dolist (pkg-checkout-dir package-vc-tests-packages)
