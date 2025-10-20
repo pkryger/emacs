@@ -179,16 +179,37 @@ package has been installed via `package-vc-install-from-checkout'.  In
 that case the package redirects to the actual VC checkout.  If the
 optional LISP-DIR argument is non-nil, then check if a related package
 specification has a `:lisp-dir' field to indicate that Lisp files are
-located in a sub directory of a checkout and return that instead."
+located in a sub directory of the checkout, or the checkout has a sub
+directory named \"lisp\" or \"src\" that contains .el files and return
+that instead."
   (let* ((pkg-spec (package-vc--desc->spec pkg-desc))
-         (url (plist-get pkg-spec :url)))
+         (url (plist-get pkg-spec :url))
+         (pkg-dir (cond
+                   ((save-match-data
+                      (and url (string-match (rx "file://" (group (+ any))) url)
+                           (match-string 1 url))))
+                   (t (package-desc-dir pkg-desc)))))
     (expand-file-name
-     (or (and (not lisp-dir) (plist-get pkg-spec :lisp-dir)) ".")
-     (cond
-      ((save-match-data
-         (and url (string-match (rx "file://" (group (+ any))) url)
-              (match-string 1 url))))
-      (t (package-desc-dir pkg-desc))))))
+     (or (when lisp-dir
+           (or (plist-get pkg-spec :lisp-dir)
+               ;; When nothing is specified about a `lisp-dir', then should
+               ;; heuristically check if there is a sub-directory with lisp
+               ;; files.  These are conventionally just called "lisp" or "src".
+               ;; If this directory exists and contains non-zero number of lisp
+               ;; files, we will use that instead of `pkg-dir'.
+               (catch 'done
+                 (dolist (name '("lisp" "src"))
+                   (when-let* ((dir (expand-file-name name pkg-dir))
+                               ((file-directory-p dir))
+                               ((directory-files dir nil "\\`[^.].+\\.el\\'" t 1)))
+                     ;; We won't use `dir', since dir is an absolute path and we
+                     ;; don't want `lisp-dir' to depend on the current location of
+                     ;; the package installation, ie. to break if moved around the
+                     ;; file system or between installations.
+                     (throw 'done name))))
+               ))
+         ".")
+     pkg-dir)))
 
 (defun package-vc--read-archive-data (archive)
   "Update `package-vc--archive-spec-alists' for ARCHIVE.
@@ -578,10 +599,12 @@ marking the package as installed."
       ;; before compiling.
       (when (package-activate-1 new-desc :reload :deps)
         ;; `package-activate-1' will reload all necessary package files
-        ;; as long as they are locate in a subdirectory of `pkg-dir'.
-        ;; If that's not the case, we want to reload all package files
-        ;; from the `lisp-dir' before compilation.
-        (unless (file-in-directory-p lisp-dir pkg-dir)
+        ;; as long as their stems are relative to of `pkg-dir'.  If
+        ;; that's not the case (for example for packages with different
+        ;; `checkout-dir' or with source files in a sub directory of
+        ;; `pkg-dir'), we want to reload package files  from the
+        ;; `lisp-dir' before compilation.
+        (unless (file-equal-p lisp-dir pkg-dir)
           (package--reload-previously-loaded compile-desc))
         ;; `package-activate-1' will add info node as long as dir file
         ;; exists in `pkg-dir'.  We need to manually add it when
@@ -686,10 +709,9 @@ checkout.  This overrides the `:branch' attribute in PKG-SPEC."
     (let ((copy (copy-package-desc pkg-desc)))
       (setf (package-desc-kind copy) 'vc
             pkg-desc copy)))
-  (pcase-let* (((map :lisp-dir) pkg-spec)
-               (name (package-desc-name pkg-desc))
-               (dirname (package-desc-full-name pkg-desc))
-               (pkg-dir (file-name-as-directory (expand-file-name dirname package-user-dir))))
+  (let* ((name (package-desc-name pkg-desc))
+         (dirname (package-desc-full-name pkg-desc))
+         (pkg-dir (file-name-as-directory (expand-file-name dirname package-user-dir))))
     (when (string-empty-p name)
       (user-error "Empty package name"))
     (setf (package-desc-dir pkg-desc) pkg-dir)
@@ -709,23 +731,6 @@ checkout.  This overrides the `:branch' attribute in PKG-SPEC."
 abort installation?" name))
         (delete-directory pkg-dir t)
         (user-error "Installation aborted")))
-
-    ;; When nothing is specified about a `lisp-dir', then should
-    ;; heuristically check if there is a sub-directory with lisp
-    ;; files.  These are conventionally just called "lisp" or "src".
-    ;; If this directory exists and contains non-zero number of lisp
-    ;; files, we will use that instead of `pkg-dir'.
-    (catch 'done
-      (dolist (name '("lisp" "src"))
-        (when-let* (((null lisp-dir))
-                    (dir (expand-file-name name pkg-dir))
-                    ((file-directory-p dir))
-                    ((directory-files dir nil "\\`[^.].+\\.el\\'" t 1)))
-          ;; We won't use `dir', since dir is an absolute path and we
-          ;; don't want `lisp-dir' to depend on the current location of
-          ;; the package installation, ie. to break if moved around the
-          ;; file system or between installations.
-          (throw 'done (setq lisp-dir name)))))
 
     ;; Ensure we have a copy of the package specification
     (when (null (package-vc--desc->spec pkg-desc name))
