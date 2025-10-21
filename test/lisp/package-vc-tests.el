@@ -44,91 +44,136 @@
 (require 'cl-lib)
 (require 'ert)
 
-(defvar package-vc-tests-dir
-  (make-temp-file "package-vc-tests-" t (format-time-string "-%Y%m%d.%H%M%S")))
+(defvar package-vc-tests-dir nil)
 
-;; Test packages sources are stored in bundle files produced by git-bundle(1)
-;; and are stored in directory package-vc-resources.  Make sure that:
-;;
-;; - tests know path to the directory:
 (defvar package-vc-tests-resources-dir
-  (file-name-concat (file-name-directory (or load-file-name buffer-file-name))
+  (file-name-concat (file-name-directory
+                     (or load-file-name buffer-file-name))
                     "package-vc-resources"))
-;; - test packages are recognised by `package' and `package-vc' internals:
-(setq package-archives nil)
-(package-initialize)
-(push (list 'test-package-1
-            (package-desc-create :name 'test-package-1
-                                 :version '(0 2)
-                                 :reqs '((emacs (30.1)))
-                                 :kind 'tar
-                                 :archive "test-elpa"
-                                 :extras (list
-                                          `(:url . ,(format "%s/test-package-1.bundle"
-                                                            package-vc-tests-resources-dir))
-                                          '(:commit . "7b8e3322055287ef1580432014de3a2d5f383d79")
-                                          '(:revdesc . "7b8e33220552"))))
-      package-archive-contents)
-(push (list 'test-package-3
-            (package-desc-create :name 'test-package-3
-                                 :version '(0 2)
-                                 :reqs '((emacs (30.1)))
-                                 :kind 'tar
-                                 :archive "test-elpa"
-                                 :extras (list
-                                          `(:url . ,(format "%s/test-package-3.bundle"
-                                                            package-vc-tests-resources-dir))
-                                          '(:commit . "7176b647c4f021f811fb7cf27f288694a0ab997d")
-                                          '(:revdesc . "7176b647c4f0"))))
-      package-archive-contents)
-(push (list 'test-elpa
+(defvar package-vc-tests-packages nil)
+
+(defmacro with-package-vc-tests-enviroment (&rest body)
+  "Eval BODY with test environment."
+  (declare (debug t))
+  ;; Test packages sources are stored in bundle files produced by
+  ;; git-bundle(1) and are stored in directory package-vc-resources.
+  ;; Before executing body make sure that:
+  `(let* (package-archives
+          (package-user-dir (expand-file-name "elpa"
+                                              package-vc-tests-dir))
+          ;; - test packages are recognised by `package' and
+          ;;   `package-vc' internals:
+          (package-archive-contents
+           (list
             (list 'test-package-1
-                  :url (format "%s/test-package-1.bundle"
-                               package-vc-tests-resources-dir)
-                  :branch "master")
+                  (package-desc-create
+                   :name 'test-package-1
+                   :version '(0 2)
+                   :reqs '((emacs (30.1)))
+                   :kind 'tar
+                   :archive "test-elpa"
+                   :extras
+                   (list
+                    `(:url
+                      . ,(format "%s/test-package-1.bundle"
+                                 package-vc-tests-resources-dir))
+                    '(:commit
+                      . "7b8e3322055287ef1580432014de3a2d5f383d79")
+                    '(:revdesc
+                      . "7b8e33220552"))))
             (list 'test-package-3
-                  :url (format "%s/test-package-3.bundle"
-                               package-vc-tests-resources-dir)
-                  :branch "master"))
-      package-vc--archive-spec-alists)
-(push (list 'test-elpa :version 1 :default-vc 'Git)
-      package-vc--archive-data-alist)
-;; - `vc-guess-backend-url' is recognising bundles as `Git' repositories.
-(push (cons (rx (literal package-vc-tests-resources-dir) "/"
-                (one-or-more any) ".bundle"
-                string-end)
-            'Git)
-      vc-clone-heuristic-alist)
+                  (package-desc-create
+                   :name 'test-package-3
+                   :version '(0 2)
+                   :reqs '((emacs (30.1)))
+                   :kind 'tar
+                   :archive "test-elpa"
+                   :extras
+                   (list
+                    `(:url
+                      . ,(format "%s/test-package-3.bundle"
+                                 package-vc-tests-resources-dir))
+                    '(:commit
+                      . "7176b647c4f021f811fb7cf27f288694a0ab997d")
+                    '(:revdesc
+                      . "7176b647c4f0"))))))
+          (package-vc--archive-spec-alists
+           (list
+            (list 'test-elpa
+                  (list 'test-package-1
+                        :url (format "%s/test-package-1.bundle"
+                                     package-vc-tests-resources-dir)
+                        :branch "master")
+                  (list 'test-package-3
+                        :url (format "%s/test-package-3.bundle"
+                                     package-vc-tests-resources-dir)
+                        :branch "master"))))
+          (package-vc--archive-data-alist
+           (list
+            (list 'test-elpa :version 1 :default-vc 'Git)))
+          ;; - `vc-guess-backend-url' is recognising bundles as `Git'
+          ;;   repositories:
+          (vc-clone-heuristic-alist
+           (cons
+            (cons (rx (literal package-vc-tests-resources-dir) "/"
+                      (one-or-more any) ".bundle"
+                      string-end)
+                  'Git)
+            vc-clone-heuristic-alist))
+          ;; - define test packages and their checkout locations
+          (package-vc-tests-packages
+           `(;; checkout and install with `package-vc-install' (on ELPA)
+             (test-package-1
+              . ,(expand-file-name "test-package-1"
+                                   package-user-dir))
+             ;; checkout and install with `package-vc-install' (not on
+             ;; ELPA)
+             (test-package-2
+              . ,(expand-file-name "test-package-2"
+                                   package-user-dir))
+             ;; checkout with `package-vc-checktout' and install with
+             ;; `package-vc-install-from-checkout' (on ELPA)
+             (test-package-3
+              . ,(expand-file-name "test-package-3"
+                                   package-vc-tests-dir))
+             ;; checkout with git and install with
+             ;; `package-vc-install-from-checkout'
+             (test-package-4
+              . ,(expand-file-name "test-package-4"
+                                   package-vc-tests-dir))
+             ;; sources in "lisp" sub directory, checkout and install
+             ;; with `package-vc-install'
+             (test-package-5
+              . ,(expand-file-name "test-package-5"
+                                   package-user-dir))
+             ;; sources in "lisp" sub directory, checkout with git and
+             ;; install with `package-vc-install-from-checkout'
+             (test-package-6
+              . ,(expand-file-name "test-package-6"
+                                   package-vc-tests-dir))
 
-(setq package-user-dir (expand-file-name "elpa" package-vc-tests-dir))
+             ;; TODO: a package with source files in a non-standard
+             ;; :lisp-dir, a custom Makefile and non-standard :doc (both
+             ;; methods of installation)
+             )))
+     ;; - test directory exists:
+     (should package-vc-tests-dir)
+     (should (file-directory-p package-vc-tests-dir))
+     ;; - resources are available:
+     (should package-vc-tests-resources-dir)
+     (should (file-directory-p package-vc-tests-resources-dir))
+     ;; - `package' has been initialised:
+     (should package--initialized)
 
-(defvar package-vc-tests-packages
-  `(;; checkout and install with `package-vc-install' (on ELPA)
-    (test-package-1 . ,(expand-file-name "test-package-1" package-user-dir))
-    ;; checkout and install with `package-vc-install' (not on ELPA)
-    (test-package-2 . ,(expand-file-name "test-package-2" package-user-dir))
-    ;; checkout with `package-vc-checktout' and install with
-    ;; `package-vc-install-from-checkout' (on ELPA)
-    (test-package-3 . ,(expand-file-name "test-package-3" package-vc-tests-dir))
-    ;; checkout with git and install with `package-vc-install-from-checkout'
-    (test-package-4 . ,(expand-file-name "test-package-4" package-vc-tests-dir))
-    ;; sources in "lisp" sub directory, checkout and intstall with
-    ;; `package-vc-install'
-    (test-package-5 . ,(expand-file-name "test-package-5" package-user-dir))
-    ;; sources in "lisp" sub directory, checkout with git and install
-    ;; with `package-vc-install-from-checkout'
-    (test-package-6 . ,(expand-file-name "test-package-6" package-vc-tests-dir))
+     ,@body))
 
-    ;; TODO: a package with source files in a non-standard :lisp-dir (both
-    ;; methods of installation)
-    ))
 
 ;; TODO: add test for deleting packages, with asserting
 ;; `package-vc-selected-packages'
 
-;; TODO: clarify `package-vc-install-all' behaviour with regards to packages
-;; installed with `package-vc' but not stored in `package-vc-selected-packages'
-;; i.e., packages from ELPAs
+;; TODO: clarify `package-vc-install-all' behaviour with regards to
+;; packages installed with `package-vc' but not stored in
+;; `package-vc-selected-packages' i.e., packages from ELPAs
 
 (defun package-vc-tests-package-desc (package &optional installed)
   "Return descriptor of PACKAGE.
@@ -165,9 +210,10 @@ position of a marker PKG."
                                   package-user-dir pkg pkg))
                          string-end))
                     (:main
-                     (rx (literal
-                          (format "%s"
-                                  (package-vc-tests-package-main-file pkg)))
+                     (rx
+                      (literal
+                       (format "%s"
+                               (package-vc-tests-package-main-file pkg)))
                          string-end))
                     (:main-compiled
                      (rx
@@ -184,11 +230,14 @@ position of a marker PKG."
     (cl-position-if
      (lambda (file)
        (string-match pkg-file file))
-     (cl-remove-if-not (lambda (file-name)
-                         (string-match interesting-entry file-name))
-                       (mapcar #'file-truename
-                               (cl-remove-if-not #'stringp
-                                                 (mapcar #'car load-history)))))))
+     (cl-remove-if-not
+      (lambda (file-name)
+        (string-match interesting-entry file-name))
+      (mapcar
+       #'file-truename
+       (cl-remove-if-not
+        #'stringp
+        (mapcar #'car load-history)))))))
 
 (defun package-vc-tests-assert-delete-elc ()
   "Assert that .elc files are in expected directories and delete them.
@@ -235,112 +284,136 @@ When ALL is non nil, check all packages under test."
           package-vc-tests-packages))
 
 (ert-deftest package-vc-tests-000-install ()
-  (package-refresh-contents)
+  (setq package-vc-tests-dir
+        (make-temp-file "package-vc-tests-"
+                        t
+                        (format-time-string "-%Y%m%d.%H%M%S")))
+  (package-initialize)
   (package-vc--archives-initialize)
-  (push (list (format "%s/install-begin" package-vc-tests-dir))
-        load-history)
-  (package-vc-install 'test-package-1)
-  (should-not (alist-get "test-package-1" package-vc-selected-packages
-                         nil nil #'string=))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (push (list (format "%s/install-begin" package-vc-tests-dir))
+           load-history)
+     (package-vc-install 'test-package-1)
+     (should-not (alist-get "test-package-1"
+                            package-vc-selected-packages
+                            nil nil #'string=))
 
-  (let ((bundle (format "%s/test-package-2.bundle" package-vc-tests-resources-dir)))
-    (package-vc-install `(test-package-2
-                          :url ,bundle
-                          :branch "master"))
-   (should (equal bundle
-                  (plist-get (alist-get "test-package-2"
-                                        package-vc-selected-packages
-                                        nil nil #'string=)
-                             :url))))
+     (let ((bundle (format "%s/test-package-2.bundle"
+                           package-vc-tests-resources-dir)))
+       (package-vc-install `(test-package-2
+                             :url ,bundle
+                             :branch "master"))
+       (should (equal bundle
+                      (plist-get (alist-get "test-package-2"
+                                            package-vc-selected-packages
+                                            nil nil #'string=)
+                                 :url))))
 
-  (let ((checkout-dir (expand-file-name "test-package-3" package-vc-tests-dir)))
-    (package-vc-checkout (package-vc-tests-package-desc 'test-package-3)
-                         checkout-dir)
-    (package-vc-install-from-checkout checkout-dir)
-    (should (equal (format "file://%s" checkout-dir)
-                   (plist-get (alist-get "test-package-3"
-                                         package-vc-selected-packages
-                                         nil nil #'string=)
-                              :url))))
+     (let ((checkout-dir (expand-file-name "test-package-3"
+                                           package-vc-tests-dir)))
+       (package-vc-checkout (package-vc-tests-package-desc
+                             'test-package-3)
+                            checkout-dir)
+       (package-vc-install-from-checkout checkout-dir)
+       (should (equal (format "file://%s" checkout-dir)
+                      (plist-get (alist-get "test-package-3"
+                                            package-vc-selected-packages
+                                            nil nil #'string=)
+                                 :url))))
 
-  (let ((checkout-dir (expand-file-name "test-package-4" package-vc-tests-dir)))
-    (shell-command
-     (format "git clone -b master %s/test-package-4.bundle %s"
-             package-vc-tests-resources-dir
-             checkout-dir))
-    (package-vc-install-from-checkout checkout-dir "test-package-4")
-    (should (equal (format "file://%s" checkout-dir)
-                   (plist-get (alist-get "test-package-4"
-                                         package-vc-selected-packages
-                                         nil nil #'string=)
-                              :url))))
+     (let ((checkout-dir (expand-file-name "test-package-4"
+                                           package-vc-tests-dir)))
+       (shell-command
+        (format "git clone -b master %s/test-package-4.bundle %s"
+                package-vc-tests-resources-dir
+                checkout-dir))
+       (package-vc-install-from-checkout checkout-dir "test-package-4")
+       (should (equal (format "file://%s" checkout-dir)
+                      (plist-get (alist-get "test-package-4"
+                                            package-vc-selected-packages
+                                            nil nil #'string=)
+                                 :url))))
 
-  (let ((bundle (format "%s/test-package-5.bundle" package-vc-tests-resources-dir)))
-    (package-vc-install `(test-package-5
-                          :url ,bundle
-                          :branch "master"))
-   (should (equal bundle
-                  (plist-get (alist-get "test-package-5"
-                                        package-vc-selected-packages
-                                        nil nil #'string=)
-                             :url))))
+     (let ((bundle (format "%s/test-package-5.bundle"
+                           package-vc-tests-resources-dir)))
+       (package-vc-install `(test-package-5
+                             :url ,bundle
+                             :branch "master"))
+       (should (equal bundle
+                      (plist-get (alist-get "test-package-5"
+                                            package-vc-selected-packages
+                                            nil nil #'string=)
+                                 :url))))
 
-  (let ((checkout-dir (expand-file-name "test-package-6" package-vc-tests-dir)))
-    (shell-command
-     (format "git clone -b master %s/test-package-6.bundle %s"
-             package-vc-tests-resources-dir
-             checkout-dir))
-    (package-vc-install-from-checkout checkout-dir "test-package-6")
-    (should (equal (format "file://%s" checkout-dir)
-                   (plist-get (alist-get "test-package-6"
-                                         package-vc-selected-packages
-                                         nil nil #'string=)
-                              :url))))
+     (let ((checkout-dir (expand-file-name "test-package-6"
+                                           package-vc-tests-dir)))
+       (shell-command
+        (format "git clone -b master %s/test-package-6.bundle %s"
+                package-vc-tests-resources-dir
+                checkout-dir))
+       (package-vc-install-from-checkout checkout-dir "test-package-6")
+       (should (equal (format "file://%s" checkout-dir)
+                      (plist-get (alist-get "test-package-6"
+                                            package-vc-selected-packages
+                                            nil nil #'string=)
+                                 :url))))
 
-  (push (list (format "%s/install-end" package-vc-tests-dir))
-        load-history)
+     (push (list (format "%s/install-end" package-vc-tests-dir))
+           load-history)
 
-  (package-vc-tests-assert-package-alist '(0 2))
-  (package-vc-tests-assert-delete-elc))
+     (package-vc-tests-assert-package-alist '(0 2))
+     (package-vc-tests-assert-delete-elc))))
 
 (ert-deftest package-vc-tests-001-main-file ()
- (dolist (pkg (mapcar #'car package-vc-tests-packages))
-   (should (equal (package-vc--main-file
-                   (package-vc-tests-package-desc pkg t))
-                  (package-vc-tests-package-main-file pkg)))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (should (equal (package-vc--main-file
+                       (package-vc-tests-package-desc pkg t))
+                      (package-vc-tests-package-main-file pkg)))))))
 
 (ert-deftest package-vc-tests-002-commit ()
- (dolist (pkg-checkout-dir package-vc-tests-packages)
-   (let ((pkg (car pkg-checkout-dir))
-         (commit (package-vc-commit
-                  (package-vc-tests-package-desc (car pkg-checkout-dir) t))))
-     (should-not (equal (cons pkg commit)
-                        (list pkg)))
-     (should-not (equal (list pkg "unknown")
-                        (list pkg commit))))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (let ((commit (package-vc-commit
+                      (package-vc-tests-package-desc pkg t))))
+         (should-not (equal (cons pkg commit)
+                            (list pkg)))
+         (should-not (equal (list pkg "unknown")
+                            (list pkg commit))))))))
 
 (ert-deftest package-vc-tests-003-load-history-after-install ()
-  (let ((install-begin (should (package-vc-tests-load-history-position
-                                'install-begin :marker)))
-        (install-end (should (package-vc-tests-load-history-position
-                              'install-end :marker))))
-    (dolist (pkg (mapcar #'car package-vc-tests-packages))
-      (let ((autoloads-pos
-             (should (package-vc-tests-load-history-position pkg :autoloads))))
-        (should (< install-end autoloads-pos install-begin)))
-      (should-not (package-vc-tests-load-history-position pkg :main))
-      (should-not (package-vc-tests-load-history-position pkg :main-compiled)))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (let ((install-begin
+            (should (package-vc-tests-load-history-position
+                     'install-begin :marker)))
+           (install-end
+            (should (package-vc-tests-load-history-position
+                     'install-end :marker))))
+       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+         (let ((autoloads-pos
+                (should (package-vc-tests-load-history-position
+                         pkg :autoloads))))
+           (should (< install-end autoloads-pos install-begin)))
+         (should-not (package-vc-tests-load-history-position
+                      pkg :main))
+         (should-not (package-vc-tests-load-history-position
+                      pkg :main-compiled)))))))
 
 (defmacro package-vc-tests-package-vc-upgrade-wait (seconds count &rest body)
   "Wait up to SECONDS for COUNT packages upgrading BODY.
 Return nil on timeout or the value of last form in BODY."
   (declare (indent 2))
   `(letrec ((packages-count ,count)
-            (post-vc-command (lambda (command _ flags)
-                               ;; A crude filter for vc commands
-                               (when (and (equal command "git")
-                                          (string-prefix-p "*vc-git" (buffer-name)))
-                                 (cl-decf packages-count)))))
+            (post-vc-command
+             (lambda (command _ flags)
+               ;; A crude filter for vc commands
+               (when (and (equal command "git")
+                          (string-prefix-p "*vc-git" (buffer-name)))
+                 (cl-decf packages-count)))))
      (add-hook 'vc-post-command-functions post-vc-command 100)
      (unwind-protect
          (with-timeout (,seconds nil)
@@ -351,135 +424,177 @@ Return nil on timeout or the value of last form in BODY."
        (remove-hook 'vc-post-command-functions post-vc-command))))
 
 (ert-deftest package-vc-tests-004-upgrade-all ()
-  (push (list (format "%s/upgrade-all-begin" package-vc-tests-dir))
-        load-history)
-  (let ((heads (package-vc-tests-packages-heads)))
-    (package-vc-tests-reset-heads)
-    (should
-     (package-vc-tests-package-vc-upgrade-wait
-         5 (length package-vc-tests-packages)
-       (package-vc-upgrade-all)
-       t))
-    (should (equal heads
-                   (package-vc-tests-packages-heads))))
-  (push (list (format "%s/upgrade-all-end" package-vc-tests-dir))
-        load-history)
-  (package-vc-tests-assert-package-alist '(0 2))
-  (package-vc-tests-assert-delete-elc))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (push (list (format "%s/upgrade-all-begin" package-vc-tests-dir))
+           load-history)
+     (let ((heads (package-vc-tests-packages-heads)))
+       (package-vc-tests-reset-heads)
+       (should
+        (package-vc-tests-package-vc-upgrade-wait
+            5 (length package-vc-tests-packages)
+          (package-vc-upgrade-all)
+          t))
+       (should (equal heads
+                      (package-vc-tests-packages-heads))))
+     (push (list (format "%s/upgrade-all-end" package-vc-tests-dir))
+           load-history)
+     (package-vc-tests-assert-package-alist '(0 2))
+     (package-vc-tests-assert-delete-elc))))
 
 (ert-deftest package-vc-tests-005-load-history-after-upgrade-all ()
-  (let ((upgrade-all-begin (should (package-vc-tests-load-history-position
-                                'upgrade-all-begin :marker)))
-        (upgrade-all-end (should (package-vc-tests-load-history-position
-                              'upgrade-all-end :marker))))
-    (dolist (pkg (mapcar #'car package-vc-tests-packages))
-      (let ((autoloads-pos
-             (should (package-vc-tests-load-history-position pkg :autoloads))))
-        (should (< upgrade-all-end autoloads-pos upgrade-all-begin))
-        (should-not (package-vc-tests-load-history-position pkg :main))
-      (should-not (package-vc-tests-load-history-position pkg :main-compiled))))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (let ((upgrade-all-begin
+            (should (package-vc-tests-load-history-position
+                     'upgrade-all-begin :marker)))
+           (upgrade-all-end
+            (should (package-vc-tests-load-history-position
+                     'upgrade-all-end :marker))))
+       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+         (let ((autoloads-pos
+                (should (package-vc-tests-load-history-position
+                         pkg :autoloads))))
+           (should (< upgrade-all-end autoloads-pos upgrade-all-begin))
+           (should-not (package-vc-tests-load-history-position
+                        pkg :main))
+           (should-not (package-vc-tests-load-history-position
+                        pkg :main-compiled))))))))
 
 (ert-deftest package-vc-tests-006-require ()
-  (dolist (pkg (mapcar #'car package-vc-tests-packages))
-    (should (fboundp (intern (format "%s-func" pkg))))
-    (should (autoloadp (symbol-function (intern (format "%s-func" pkg)))))
-    (should (require pkg))
-    (should (fboundp (intern (format "%s-func" pkg))))
-    (should-not (autoloadp (symbol-function (intern (format "%s-func" pkg)))))
-    (should-not (fboundp (intern (format "%s-old-func" pkg)))))
-  (let ((upgrade-all-end (should (package-vc-tests-load-history-position
-                              'upgrade-all-end :marker))))
-    (dolist (pkg (mapcar #'car package-vc-tests-packages))
-      (let ((main-pos (should (package-vc-tests-load-history-position pkg :main))))
-        (should (< main-pos upgrade-all-end)))
-      (should-not (package-vc-tests-load-history-position pkg :main-compiled)))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (should (fboundp (intern (format "%s-func" pkg))))
+       (should (autoloadp
+                (symbol-function (intern (format "%s-func" pkg)))))
+       (should (require pkg))
+       (should (fboundp (intern (format "%s-func" pkg))))
+       (should-not (autoloadp
+                    (symbol-function (intern (format "%s-func" pkg)))))
+       (should-not (fboundp (intern (format "%s-old-func" pkg)))))
+     (let ((upgrade-all-end
+            (should (package-vc-tests-load-history-position
+                     'upgrade-all-end :marker))))
+       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+         (let ((main-pos (should (package-vc-tests-load-history-position
+                                  pkg :main))))
+           (should (< main-pos upgrade-all-end)))
+         (should-not (package-vc-tests-load-history-position
+                      pkg :main-compiled)))))))
 
 (ert-deftest package-vc-tests-007-upgrade ()
-  (push (list (format "%s/upgrade-begin" package-vc-tests-dir))
-        load-history)
-  (let ((heads (package-vc-tests-packages-heads)))
-    (package-vc-tests-reset-heads)
-    (should
-     (package-vc-tests-package-vc-upgrade-wait
-         5 (length package-vc-tests-packages)
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
-         (package-vc-upgrade
-          (package-vc-tests-package-desc pkg t))
-         (should (fboundp (intern (format "%s-func" pkg))))
-         (should-not (autoloadp (symbol-function (intern (format "%s-func" pkg)))))
-         (should-not (fboundp (intern (format "%s-old-func" pkg)))))
-       t))
-    (should (equal heads
-                   (package-vc-tests-packages-heads))))
-  (push (list (format "%s/upgrade-end" package-vc-tests-dir))
-        load-history)
-  (package-vc-tests-assert-package-alist '(0 2))
-  (package-vc-tests-assert-delete-elc))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (push (list (format "%s/upgrade-begin" package-vc-tests-dir))
+           load-history)
+     (let ((heads (package-vc-tests-packages-heads)))
+       (package-vc-tests-reset-heads)
+       (should
+        (package-vc-tests-package-vc-upgrade-wait
+            5 (length package-vc-tests-packages)
+          (dolist (pkg (mapcar #'car package-vc-tests-packages))
+            (package-vc-upgrade
+             (package-vc-tests-package-desc pkg t))
+            (should (fboundp (intern (format "%s-func" pkg))))
+            (should-not (autoloadp
+                         (symbol-function
+                          (intern (format "%s-func" pkg)))))
+            (should-not (fboundp (intern (format "%s-old-func" pkg)))))
+          t))
+       (should (equal heads
+                      (package-vc-tests-packages-heads))))
+     (push (list (format "%s/upgrade-end" package-vc-tests-dir))
+           load-history)
+     (package-vc-tests-assert-package-alist '(0 2))
+     (package-vc-tests-assert-delete-elc))))
 
 (ert-deftest package-vc-tests-008-load-history-after-upgrade ()
-  (let ((upgrade-begin (should (package-vc-tests-load-history-position
-                                'upgrade-begin :marker)))
-        (upgrade-end (should (package-vc-tests-load-history-position
-                              'upgrade-end :marker))))
-    (dolist (pkg (mapcar #'car package-vc-tests-packages))
-      (let ((autoloads-pos
-             (should (package-vc-tests-load-history-position pkg :autoloads)))
-            (main-pos
-             (should (package-vc-tests-load-history-position pkg :main)))
-            (main-compiled-pos
-             (should (package-vc-tests-load-history-position pkg :main-compiled))))
-        (should (< upgrade-end autoloads-pos upgrade-begin))
-        (should (< upgrade-end main-pos upgrade-begin))
-        (should (< upgrade-end main-compiled-pos upgrade-begin))))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (let ((upgrade-begin
+            (should (package-vc-tests-load-history-position
+                     'upgrade-begin :marker)))
+           (upgrade-end
+            (should (package-vc-tests-load-history-position
+                     'upgrade-end :marker))))
+       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+         (let ((autoloads-pos
+                (should (package-vc-tests-load-history-position
+                         pkg :autoloads)))
+               (main-pos
+                (should (package-vc-tests-load-history-position
+                         pkg :main)))
+               (main-compiled-pos
+                (should (package-vc-tests-load-history-position
+                         pkg :main-compiled))))
+           (should (< upgrade-end autoloads-pos upgrade-begin))
+           (should (< upgrade-end main-pos upgrade-begin))
+           (should
+            (< upgrade-end main-compiled-pos upgrade-begin))))))))
 
 (ert-deftest package-vc-tests-009-rebuild ()
-  (package-vc-tests-reset-heads)
-  (let ((heads (package-vc-tests-packages-heads)))
-    (dolist (pkg (mapcar #'car package-vc-tests-packages))
-      (package-vc-rebuild
-       (package-vc-tests-package-desc pkg t))
-      (should (fboundp (intern (format "%s-func" pkg))))
-      (should-not (autoloadp (symbol-function (intern (format "%s-func" pkg)))))
-      (should (fboundp (intern (format "%s-old-func" pkg))))
-      (should-not (autoloadp (symbol-function (intern (format "%s-old-func" pkg))))))
-    (should (equal heads
-                   (package-vc-tests-packages-heads))))
-  (package-vc-tests-assert-package-alist '(0 1))
-  (package-vc-tests-assert-delete-elc))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (package-vc-tests-reset-heads)
+     (let ((heads (package-vc-tests-packages-heads)))
+       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+         (package-vc-rebuild
+          (package-vc-tests-package-desc pkg t))
+         (should (fboundp (intern (format "%s-func" pkg))))
+         (should-not (autoloadp
+                      (symbol-function
+                       (intern (format "%s-func" pkg)))))
+         (should (fboundp (intern (format "%s-old-func" pkg))))
+         (should-not (autoloadp
+                      (symbol-function
+                       (intern (format "%s-old-func" pkg))))))
+       (should (equal heads
+                      (package-vc-tests-packages-heads))))
+     (package-vc-tests-assert-package-alist '(0 1))
+     (package-vc-tests-assert-delete-elc))))
 
 (ert-deftest package-vc-tests-010-prepare-patch ()
-  (dolist (pkg-checkout-dir package-vc-tests-packages)
-    (cl-letf* ((call-count 0)
-               ((symbol-function #'package-maintainers)
-                (lambda (&rest _)
-                  "test-maintainers"))
-               ((symbol-function #'vc-prepare-patch)
-                (lambda (addressee subject revisions)
-                  (should (equal (file-name-as-directory default-directory)
-                                 (file-name-as-directory (cdr pkg-checkout-dir))))
-                  (should (equal "test-maintainers" addressee))
-                  (should (equal "test-subject" subject))
-                  (should (equal "test-revisions" revisions))
-                  (cl-incf call-count))))
-      (package-vc-prepare-patch (package-vc-tests-package-desc
-                                 (car pkg-checkout-dir)
-                                 t)
-                                "test-subject"
-                                "test-revisions")
-      (should (eql 1 call-count)))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (dolist (pkg-checkout-dir package-vc-tests-packages)
+       (cl-letf* ((call-count 0)
+                  ((symbol-function #'package-maintainers)
+                   (lambda (&rest _)
+                     "test-maintainers"))
+                  ((symbol-function #'vc-prepare-patch)
+                   (lambda (addressee subject revisions)
+                     (should (equal (file-name-as-directory
+                                     default-directory)
+                                    (file-name-as-directory
+                                     (cdr pkg-checkout-dir))))
+                     (should (equal "test-maintainers" addressee))
+                     (should (equal "test-subject" subject))
+                     (should (equal "test-revisions" revisions))
+                     (cl-incf call-count))))
+         (package-vc-prepare-patch (package-vc-tests-package-desc
+                                    (car pkg-checkout-dir)
+                                    t)
+                                   "test-subject"
+                                   "test-revisions")
+         (should (eql 1 call-count)))))))
 
 (ert-deftest package-vc-tests-011-log-incoming ()
-  (dolist (pkg-checkout-dir package-vc-tests-packages)
-    (cl-letf* ((call-count 0)
-               ((symbol-function #'vc-log-incoming)
-                (lambda ()
-                  (interactive)
-                  (should (equal (file-name-as-directory default-directory)
-                                 (file-name-as-directory (cdr pkg-checkout-dir))))
-                  (cl-incf call-count))))
-      (package-vc-log-incoming (package-vc-tests-package-desc
-                                (car pkg-checkout-dir) t))
-      (should (eql 1 call-count)))))
+  (eval
+   '(with-package-vc-tests-enviroment
+     (dolist (pkg-checkout-dir package-vc-tests-packages)
+       (cl-letf* ((call-count 0)
+                  ((symbol-function #'vc-log-incoming)
+                   (lambda ()
+                     (interactive)
+                     (should (equal (file-name-as-directory
+                                     default-directory)
+                                    (file-name-as-directory
+                                     (cdr pkg-checkout-dir))))
+                     (cl-incf call-count))))
+         (package-vc-log-incoming (package-vc-tests-package-desc
+                                   (car pkg-checkout-dir) t))
+         (should (eql 1 call-count)))))))
 
 (provide 'package-vc-tests)
 
