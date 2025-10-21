@@ -496,9 +496,17 @@ slot of PKG-DESC.  This includes downloading missing dependencies,
 generating autoloads, generating a package description file (used to
 identify a package as a VC package later on), building documentation and
 marking the package as installed."
-  (let* ((pkg-dir (package-desc-dir pkg-desc))
+  (let* (;; Main package directory, under `package-user-dir'.  This is
+         ;; the same `checkout-dir' when package has been installed with
+         ;; `package-vc-install'.
+         (pkg-dir (package-desc-dir pkg-desc))
          (pkg-spec (package-vc--desc->spec pkg-desc))
+         ;; Directory where the package repository has been checked out.
+         ;; This is the `dir' argument of
+         ;; `package-vc-install-from-checkout'.
          (checkout-dir (package-vc--checkout-dir pkg-desc))
+         ;; Directory where package's Lisp code resides.  It may be
+         ;; equal to `checkout-dir' or be a subdirectory of it.
          (lisp-dir (package-vc--checkout-dir pkg-desc 'lisp-dir))
          missing)
 
@@ -541,13 +549,17 @@ marking the package as installed."
            (auto-name (format "%s-autoloads.el" name)))
       (package-generate-autoloads name lisp-dir)
       ;; There are two cases when we wish to "indirect" the loading of
-      ;; autoload files: 1. a package specification has a `:lisp-dir'
-      ;; entry listing indicting that the actual Lisp code is located in
-      ;; a subdirectory of the checkout, 2. the package has been
-      ;; installed using `package-vc-install-from-checkout' and we want
-      ;; to load the other directory instead -- which is outside of the
-      ;; checkout.  We can therefore take file inequality as a sign that
-      ;; we have to set up an indirection.
+      ;; autoload files:
+      ;;
+      ;; 1. a package specification has a `:lisp-dir' entry listing
+      ;; indicting that the actual Lisp code is located in a
+      ;; subdirectory of the checkout,
+      ;;
+      ;; 2. the package has been installed using
+      ;; `package-vc-install-from-checkout' and we want to load the
+      ;; other directory instead -- which is outside of the checkout.
+      ;; We can therefore take file inequality as a sign that we have to
+      ;; set up an indirection.
       (unless (file-equal-p lisp-dir pkg-dir)
         (write-region
          (concat
