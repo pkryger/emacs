@@ -94,9 +94,9 @@
 (push (list 'test-elpa :version 1 :default-vc 'Git)
       package-vc--archive-data-alist)
 ;; - `vc-guess-backend-url' is recognising bundles as `Git' repositories.
-(push (cons (rx-to-string `(seq ,package-vc-tests-resources-dir "/"
-                                (one-or-more any) ".bundle"
-                                string-end))
+(push (cons (rx (literal package-vc-tests-resources-dir) "/"
+                (one-or-more any) ".bundle"
+                string-end)
             'Git)
       vc-clone-heuristic-alist)
 
@@ -160,26 +160,27 @@ PKG compiled main file.  Otherwise, if TYPE is `:marker' return a
 position of a marker PKG."
   (let ((pkg-file (pcase type
                     (:autoloads
-                     (rx-to-string
-                      `(seq ,(format "%s/%s/%s-autoloads.el"
-                                     package-user-dir pkg pkg)
-                            string-end)))
+                     (rx (literal
+                          (format "%s/%s/%s-autoloads.el"
+                                  package-user-dir pkg pkg))
+                         string-end))
                     (:main
-                     (rx-to-string
-                      `(seq ,(format "%s"
-                                     (package-vc-tests-package-main-file pkg))
-                            string-end)))
+                     (rx (literal
+                          (format "%s"
+                                  (package-vc-tests-package-main-file pkg)))
+                         string-end))
                     (:main-compiled
-                     (rx-to-string
-                      `(seq ,(format "%s"
-                                     (package-vc-tests-package-main-file pkg))
-                            "c"
-                            string-end)))
+                     (rx
+                      (literal
+                       (format "%s"
+                               (package-vc-tests-package-main-file pkg)))
+                      "c"
+                      string-end))
                     (:marker
-                     (rx-to-string `(seq "/" ,(format "%s" pkg))))))
+                     (rx "/" (literal (format "%s" pkg))))))
         (interesting-entry
-         (rx-to-string `(seq string-start
-                             ,(file-truename package-vc-tests-dir)))))
+         (rx string-start
+             (literal (file-truename package-vc-tests-dir)))))
     (cl-position-if
      (lambda (file)
        (string-match pkg-file file))
@@ -195,9 +196,9 @@ When ALL is non nil, check all packages under test."
   (dolist (pkg (mapcar #'car package-vc-tests-packages))
     (let* ((dir (package-vc-tests-package-lisp-dir pkg))
            (elc-files (directory-files dir nil (rx ".elc" string-end)))
-           (autoloads-rx (rx-to-string
-                          `(seq ,(format "%s-autoloads.el" pkg)
-                                string-end))))
+           (autoloads-rx (rx
+                          (literal (format "%s-autoloads.el" pkg))
+                          string-end)))
       (should-not (equal (cons dir elc-files)
                          (list dir)))
       (should-not (cl-find-if (lambda (elc)
