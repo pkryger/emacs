@@ -333,7 +333,7 @@ When ALL is non nil, check all packages under test."
 
 (defmacro package-vc-tests-package-vc-upgrade-wait (seconds count &rest body)
   "Wait up to SECONDS for COUNT packages upgrading BODY.
-Return nil on timeout or non nil otherwise."
+Return nil on timeout or the value of last form in BODY."
   (declare (indent 2))
   `(letrec ((packages-count ,count)
             (post-vc-command (lambda (command _ flags)
@@ -343,13 +343,11 @@ Return nil on timeout or non nil otherwise."
                                  (cl-decf packages-count)))))
      (add-hook 'vc-post-command-functions post-vc-command 100)
      (unwind-protect
-         (progn
-           ,@body
-           (catch 'done
-             (dotimes (i (* 10 ,seconds))
-               (sleep-for 0.1)
-               (when (eql packages-count 0)
-                 (throw 'done t)))))
+         (with-timeout (,seconds nil)
+           (prog1
+               (progn ,@body)
+             (while (not (eql packages-count 0))
+               (sleep-for 0.1))))
        (remove-hook 'vc-post-command-functions post-vc-command))))
 
 (ert-deftest package-vc-tests-004-upgrade-all ()
@@ -360,7 +358,8 @@ Return nil on timeout or non nil otherwise."
     (should
      (package-vc-tests-package-vc-upgrade-wait
          5 (length package-vc-tests-packages)
-       (package-vc-upgrade-all)))
+       (package-vc-upgrade-all)
+       t))
     (should (equal heads
                    (package-vc-tests-packages-heads))))
   (push (list (format "%s/upgrade-all-end" package-vc-tests-dir))
@@ -408,7 +407,8 @@ Return nil on timeout or non nil otherwise."
           (package-vc-tests-package-desc pkg t))
          (should (fboundp (intern (format "%s-func" pkg))))
          (should-not (autoloadp (symbol-function (intern (format "%s-func" pkg)))))
-         (should-not (fboundp (intern (format "%s-old-func" pkg)))))))
+         (should-not (fboundp (intern (format "%s-old-func" pkg)))))
+       t))
     (should (equal heads
                    (package-vc-tests-packages-heads))))
   (push (list (format "%s/upgrade-end" package-vc-tests-dir))
