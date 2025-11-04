@@ -42,15 +42,54 @@
 (require 'vc-git)
 (require 'vc)
 (require 'cl-lib)
+(require 'ert-x)
 (require 'ert)
 
 (defvar package-vc-tests-dir nil)
-
-(defvar package-vc-tests-resources-dir
-  (file-name-concat (file-name-directory
-                     (or load-file-name buffer-file-name))
-                    "package-vc-resources"))
 (defvar package-vc-tests-packages nil)
+(defvar package-vc-tests-bundles nil)
+
+(defun package-vc-tests-checkin (name suffix in commit-msg &optional lisp-dir)
+  "For package NAME copy IN file as main file.
+After copying update SUFFIX in the file and check it in with COMMIT-MSG.
+If LISP-DIR is non-nil place the file under LISP-DIR."
+  (let ((resource-dir (ert-resource-directory))
+        (main-file (format "%s.el" (if lisp-dir
+                                       (expand-file-name name lisp-dir)
+                                     name)))
+        (suffix (if (stringp suffix) suffix (format "%s" suffix))))
+    (copy-file (expand-file-name in resource-dir) main-file t)
+    (with-temp-buffer
+      (insert-file-contents main-file)
+      (goto-char (point-min))
+      (while (search-forward "SUFFIX" nil t)
+        (replace-match suffix))
+      (write-file main-file))
+    (vc-git-command nil 0 nil "add" ".")
+    (vc-git-command nil 0 nil "commit" "-m" commit-msg)))
+
+(defun package-vc-tests-create-bundle (suffix &optional lisp-dir)
+  "Create a test package bundle with SUFFIX.
+If LISP-DIR is non-nil place sources of the package in LISP-DIR."
+  (let* ((name (format "test-package-%s" suffix))
+         (src-dir (expand-file-name (format "src/%s" name)
+                                    package-vc-tests-dir)))
+    (make-directory (if lisp-dir
+                       (expand-file-name lisp-dir src-dir)
+                     src-dir)
+                    :parents)
+    (let ((default-directory src-dir)
+          (bundle-file (expand-file-name  (format "%s.bundle" name)
+                                          package-vc-tests-dir)))
+      (vc-git-command nil 0 nil "init" "-b" "master")
+      (package-vc-tests-checkin
+       name suffix "test-package-v0.1.el.in" "First commit" lisp-dir)
+      (package-vc-tests-checkin
+       name suffix "test-package-v0.2.el.in" "Second commit" lisp-dir)
+      (vc-git-command nil 0 nil
+                      "bundle" "create" bundle-file "master")
+      (list (intern name)
+            bundle-file (vc-git-working-revision nil)))))
 
 (defmacro with-package-vc-tests-enviroment (&rest body)
   "Eval BODY with test environment."
@@ -59,70 +98,28 @@
   ;; git-bundle(1) and are stored in directory package-vc-resources.
   ;; Before executing body make sure that:
   `(let* (package-archives
+          ;; - temporary location for packages and test files is ready
+          (package-vc-tests-dir
+           (or package-vc-tests-dir
+               (setq package-vc-tests-dir
+                     (make-temp-file "package-vc-tests-"
+                                     t
+                                     (format-time-string "-%Y%m%d.%H%M%S")))))
+          ;; - packages are installed into a test directory
           (package-user-dir (expand-file-name "elpa"
                                               package-vc-tests-dir))
-          ;; - test packages are recognised by `package' and
-          ;;   `package-vc' internals:
-          (package-archive-contents
-           (list
-            (list 'test-package-1
-                  (package-desc-create
-                   :name 'test-package-1
-                   :version '(0 2)
-                   :reqs '((emacs (30.1)))
-                   :kind 'tar
-                   :archive "test-elpa"
-                   :extras
-                   (list
-                    `(:url
-                      . ,(format "%s/test-package-1.bundle"
-                                 package-vc-tests-resources-dir))
-                    '(:commit
-                      . "7b8e3322055287ef1580432014de3a2d5f383d79")
-                    '(:revdesc
-                      . "7b8e33220552"))))
-            (list 'test-package-3
-                  (package-desc-create
-                   :name 'test-package-3
-                   :version '(0 2)
-                   :reqs '((emacs (30.1)))
-                   :kind 'tar
-                   :archive "test-elpa"
-                   :extras
-                   (list
-                    `(:url
-                      . ,(format "%s/test-package-3.bundle"
-                                 package-vc-tests-resources-dir))
-                    '(:commit
-                      . "7176b647c4f021f811fb7cf27f288694a0ab997d")
-                    '(:revdesc
-                      . "7176b647c4f0"))))))
-          (package-vc--archive-spec-alists
-           (list
-            (list 'test-elpa
-                  (list 'test-package-1
-                        :url (format "%s/test-package-1.bundle"
-                                     package-vc-tests-resources-dir)
-                        :branch "master")
-                  (list 'test-package-3
-                        :url (format "%s/test-package-3.bundle"
-                                     package-vc-tests-resources-dir)
-                        :branch "master"))))
-          (package-vc--archive-data-alist
-           (list
-            (list 'test-elpa :version 1 :default-vc 'Git)))
-          ;; - `vc-guess-backend-url' is recognising bundles as `Git'
-          ;;   repositories:
-          (vc-clone-heuristic-alist
-           (cons
-            (cons (rx (literal package-vc-tests-resources-dir) "/"
-                      (one-or-more any) ".bundle"
-                      string-end)
-                  'Git)
-            vc-clone-heuristic-alist))
-          ;; - define test packages and their checkout locations
+          ;; - create test package bundles if necessary and define test
+          ;;   packages and their checkout locations
+          (package-vc-tests-bundles
+           (or package-vc-tests-bundles
+               (setq package-vc-tests-bundles
+                     (mapcar (lambda (suffix)
+                               (package-vc-tests-create-bundle
+                                suffix (and (< 4 suffix) "lisp")))
+                             '(1 2 3 4 5 6)))))
           (package-vc-tests-packages
-           `(;; checkout and install with `package-vc-install' (on ELPA)
+           `(;; checkout and install with `package-vc-install' (on
+             ;; ELPA)
              (test-package-1
               . ,(expand-file-name "test-package-1"
                                    package-user-dir))
@@ -153,15 +150,63 @@
                                    package-vc-tests-dir))
 
              ;; TODO: a package with source files in a non-standard
-             ;; :lisp-dir, a custom Makefile and non-standard :doc (both
-             ;; methods of installation)
-             )))
-     ;; - test directory exists:
-     (should package-vc-tests-dir)
-     (should (file-directory-p package-vc-tests-dir))
-     ;; - resources are available:
-     (should package-vc-tests-resources-dir)
-     (should (file-directory-p package-vc-tests-resources-dir))
+             ;; :lisp-dir, a custom Makefile and non-standard :doc
+             ;; (both methods of installation)
+             ))
+          ;; - test packages are recognised by `package' and
+          ;;   `package-vc' internals:
+          (package-archive-contents
+           (list
+            (let ((bundle (alist-get 'test-package-1
+                                     package-vc-tests-bundles)))
+              (list 'test-package-1
+                    (package-desc-create
+                     :name 'test-package-1
+                     :version '(0 2)
+                     :reqs '((emacs (30.1)))
+                     :kind 'tar
+                     :archive "test-elpa"
+                     :extras
+                     (list
+                      (cons :url  (car bundle))
+                      (cons :commit (cadr bundle))
+                      (cons :revdesc (substring (cadr bundle) 0 12))))))
+            (let ((bundle (alist-get 'test-package-3
+                                     package-vc-tests-bundles)))
+              (list 'test-package-3
+                    (package-desc-create
+                     :name 'test-package-3
+                     :version '(0 2)
+                     :reqs '((emacs (30.1)))
+                     :kind 'tar
+                     :archive "test-elpa"
+                     :extras
+                     (list
+                      (cons :url  (car bundle))
+                      (cons :commit (cadr bundle))
+                      (cons :revdesc (substring (cadr bundle) 0 12))))))))
+          (package-vc--archive-spec-alists
+           (list
+            (list 'test-elpa
+                  (list 'test-package-1
+                        :url (car (alist-get 'test-package-1
+                                             package-vc-tests-bundles))
+                        :branch "master")
+                  (list 'test-package-3
+                        :url (car (alist-get 'test-package-3
+                                             package-vc-tests-bundles))
+                        :branch "master"))))
+          (package-vc--archive-data-alist
+           (list
+            (list 'test-elpa :version 1 :default-vc 'Git)))
+          ;; - `vc-guess-backend-url' is recognising bundles as `Git'
+          ;;   repositories:
+          (vc-clone-heuristic-alist
+           (cons
+            (cons (rx "test-package-" (one-or-more digit) ".bundle"
+                      string-end)
+                  'Git)
+            vc-clone-heuristic-alist)))
      ;; - `package' has been initialised:
      (should package--initialized)
 
@@ -284,10 +329,6 @@ When ALL is non nil, check all packages under test."
           package-vc-tests-packages))
 
 (ert-deftest package-vc-tests-000-install ()
-  (setq package-vc-tests-dir
-        (make-temp-file "package-vc-tests-"
-                        t
-                        (format-time-string "-%Y%m%d.%H%M%S")))
   (package-initialize)
   (package-vc--archives-initialize)
   (eval
@@ -299,8 +340,8 @@ When ALL is non nil, check all packages under test."
                             package-vc-selected-packages
                             nil nil #'string=))
 
-     (let ((bundle (format "%s/test-package-2.bundle"
-                           package-vc-tests-resources-dir)))
+     (let ((bundle (car (alist-get 'test-package-2
+                                   package-vc-tests-bundles))))
        (package-vc-install `(test-package-2
                              :url ,bundle
                              :branch "master"))
@@ -325,8 +366,9 @@ When ALL is non nil, check all packages under test."
      (let ((checkout-dir (expand-file-name "test-package-4"
                                            package-vc-tests-dir)))
        (shell-command
-        (format "git clone -b master %s/test-package-4.bundle %s"
-                package-vc-tests-resources-dir
+        (format "git clone -b master %s %s"
+                (car (alist-get 'test-package-4
+                                package-vc-tests-bundles))
                 checkout-dir))
        (package-vc-install-from-checkout checkout-dir "test-package-4")
        (should (equal (format "file://%s" checkout-dir)
@@ -335,8 +377,8 @@ When ALL is non nil, check all packages under test."
                                             nil nil #'string=)
                                  :url))))
 
-     (let ((bundle (format "%s/test-package-5.bundle"
-                           package-vc-tests-resources-dir)))
+     (let ((bundle (car (alist-get 'test-package-5
+                                   package-vc-tests-bundles))))
        (package-vc-install `(test-package-5
                              :url ,bundle
                              :branch "master"))
@@ -349,8 +391,9 @@ When ALL is non nil, check all packages under test."
      (let ((checkout-dir (expand-file-name "test-package-6"
                                            package-vc-tests-dir)))
        (shell-command
-        (format "git clone -b master %s/test-package-6.bundle %s"
-                package-vc-tests-resources-dir
+        (format "git clone -b master %s %s"
+                (car (alist-get 'test-package-6
+                                package-vc-tests-bundles))
                 checkout-dir))
        (package-vc-install-from-checkout checkout-dir "test-package-6")
        (should (equal (format "file://%s" checkout-dir)
