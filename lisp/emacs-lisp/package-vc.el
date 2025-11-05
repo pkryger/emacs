@@ -184,30 +184,32 @@ directory named \"lisp\" or \"src\" that contains .el files and return
 that instead."
   (let* ((pkg-spec (package-vc--desc->spec pkg-desc))
          (url (plist-get pkg-spec :url))
-         (pkg-dir (cond
-                   ((save-match-data
-                      (and url (string-match (rx "file://" (group (+ any))) url)
-                           (match-string 1 url))))
-                   (t (package-desc-dir pkg-desc)))))
+         (pkg-dir (pcase url
+                    ((rx "file://" (let checkout-dir (+ any)))
+                     checkout-dir)
+                    (_ (package-desc-dir pkg-desc)))))
     (expand-file-name
-     (or (when lisp-dir
-           (or (plist-get pkg-spec :lisp-dir)
-               ;; When nothing is specified about a `lisp-dir', then should
-               ;; heuristically check if there is a sub-directory with lisp
-               ;; files.  These are conventionally just called "lisp" or "src".
-               ;; If this directory exists and contains non-zero number of lisp
-               ;; files, we will use that instead of `pkg-dir'.
-               (catch 'done
-                 (dolist (name '("lisp" "src"))
-                   (when-let* ((dir (expand-file-name name pkg-dir))
-                               ((file-directory-p dir))
-                               ((directory-files dir nil "\\`[^.].+\\.el\\'" t 1)))
-                     ;; We won't use `dir', since dir is an absolute path and we
-                     ;; don't want `lisp-dir' to depend on the current location of
-                     ;; the package installation, ie. to break if moved around the
-                     ;; file system or between installations.
-                     (throw 'done name))))
-               ))
+     (or (and lisp-dir
+              (or (plist-get pkg-spec :lisp-dir)
+                  ;; When nothing is specified about a `lisp-dir', then
+                  ;; should heuristically check if there is a
+                  ;; sub-directory with lisp files.  These are
+                  ;; conventionally just called "lisp" or "src".  If
+                  ;; this directory exists and contains non-zero number
+                  ;; of lisp files, we will use that instead of
+                  ;; `pkg-dir'.
+                  (catch 'done
+                    (dolist (name '("lisp" "src"))
+                      (when-let* ((dir (expand-file-name name pkg-dir))
+                                  ((file-directory-p dir))
+                                  ((directory-files
+                                    dir nil "\\`[^.].+\\.el\\'" t 1)))
+                        ;; We won't use `dir', since dir is an absolute
+                        ;; path and we don't want `lisp-dir' to depend
+                        ;; on the current location of the package
+                        ;; installation, ie. to break if moved around
+                        ;; the file system or between installations.
+                        (throw 'done name))))))
          ".")
      pkg-dir)))
 
@@ -621,7 +623,7 @@ marking the package as installed."
         ;; `package-activate-1' will add info node as long as dir file
         ;; exists in `pkg-dir'.  We need to manually add it when
         ;; `checkout-dir' is in different location.
-        (unless (file-equal-p pkg-dir checkout-dir)
+        (unless (file-equal-p checkout-dir pkg-dir)
           (package--add-info-node checkout-dir))
         ;; FIXME: Compilation should be done as a separate, optional, step.
         ;; E.g. for multi-package installs, we should first install all packages
