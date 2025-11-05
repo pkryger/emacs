@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Free Software Foundation, Inc.
 
-;; Author: Przemsyław Kryger <pkryger@Gail.com>
+;; Author: Przemsyław Kryger <pkryger@gmail.com>
 ;; Keywords: package
 
 ;; This file is part of GNU Emacs.
@@ -241,6 +241,16 @@ is to mimic `package-vc--read-package-desc'."
   "Return a main file of PKG."
   (format "%s/%s.el" (package-vc-tests-package-lisp-dir pkg) pkg))
 
+
+;; When a package source is being recompiled - for example as result of
+;; `pakckage-vc-upgrade' or `package-vc-rebuild' - it is also reloaded
+;; [1] to ensure that the most recent version of compiled code is
+;; available to Emacs.  There are a few tests that add markers in
+;; `load-history' before executing such functions.  And then follow up
+;; tests use these markers to assert that expected package files are in
+;; correct places in the `load-history'.
+;;
+;; [1] Only when a file has been loaded previously.
 (defun package-vc-tests-load-history-position (pkg type)
   "Return a PKG's position in `load-history'.
 If TYPE is `:autoloads' return a position of a PKG autoloads file.
@@ -257,14 +267,12 @@ position of a marker PKG."
                     (:main
                      (rx
                       (literal
-                       (format "%s"
-                               (package-vc-tests-package-main-file pkg)))
-                         string-end))
+                       (package-vc-tests-package-main-file pkg))
+                      string-end))
                     (:main-compiled
                      (rx
                       (literal
-                       (format "%s"
-                               (package-vc-tests-package-main-file pkg)))
+                       (package-vc-tests-package-main-file pkg))
                       "c"
                       string-end))
                     (:marker
@@ -456,13 +464,13 @@ Return nil on timeout or the value of last form in BODY."
                ;; A crude filter for vc commands
                (when (and (equal command "git")
                           (string-prefix-p "*vc-git" (buffer-name)))
-                 (cl-decf packages-count)))))
+                 (decf packages-count)))))
      (add-hook 'vc-post-command-functions post-vc-command 100)
      (unwind-protect
          (with-timeout (,seconds nil)
            (prog1
                (progn ,@body)
-             (while (not (eql packages-count 0))
+             (while (/= packages-count 0)
                (sleep-for 0.1))))
        (remove-hook 'vc-post-command-functions post-vc-command))))
 
