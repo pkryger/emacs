@@ -295,7 +295,7 @@ position of a marker PKG."
 (defun package-vc-tests-assert-delete-elc ()
   "Assert that .elc files are in expected directories and delete them.
 When ALL is non nil, check all packages under test."
-  (dolist (pkg (mapcar #'car package-vc-tests-packages))
+  (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
     (let* ((dir (package-vc-tests-package-lisp-dir pkg))
            (elc-files (directory-files dir nil (rx ".elc" string-end)))
            (autoloads-rx (rx
@@ -311,7 +311,7 @@ When ALL is non nil, check all packages under test."
 
 (defun package-vc-tests-assert-package-alist (version)
   "Assert that entries in `package-alist' have correct VERSION and dir."
-  (dolist (pkg (mapcar #'car package-vc-tests-packages))
+  (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
     (let ((pkg-desc (should (cadr (assq pkg package-alist)))))
       (should (equal (file-name-as-directory
                       (expand-file-name (format "%s" pkg)
@@ -323,10 +323,9 @@ When ALL is non nil, check all packages under test."
 
 (defun package-vc-tests-reset-heads ()
   "Reset to HEAD^ checkouts `package-vc-tests-packages'."
-  (mapcar (lambda (pkg-checkout-dir)
-            (let ((default-directory (cdr pkg-checkout-dir)))
-              (vc-git-command nil 0 nil "reset" "--hard" "HEAD^")))
-          package-vc-tests-packages))
+  (pcase-dolist (`(,_ . ,dir) package-vc-tests-packages)
+    (let ((default-directory dir))
+      (vc-git-command nil 0 nil "reset" "--hard" "HEAD^"))))
 
 (defun package-vc-tests-packages-heads ()
   "Return HEAD revisions of `package-vc-tests-packages'."
@@ -419,7 +418,7 @@ When ALL is non nil, check all packages under test."
 (ert-deftest package-vc-tests-001-main-file ()
   (eval
    '(with-package-vc-tests-enviroment
-     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+     (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
        (should (equal (package-vc--main-file
                        (package-vc-tests-package-desc pkg t))
                       (package-vc-tests-package-main-file pkg)))))))
@@ -427,7 +426,7 @@ When ALL is non nil, check all packages under test."
 (ert-deftest package-vc-tests-002-commit ()
   (eval
    '(with-package-vc-tests-enviroment
-     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+     (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
        (let ((commit (package-vc-commit
                       (package-vc-tests-package-desc pkg t))))
          (should-not (equal (cons pkg commit)
@@ -444,7 +443,7 @@ When ALL is non nil, check all packages under test."
            (install-end
             (should (package-vc-tests-load-history-position
                      'install-end :marker))))
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (let ((autoloads-pos
                 (should (package-vc-tests-load-history-position
                          pkg :autoloads))))
@@ -502,7 +501,7 @@ Return nil on timeout or the value of last form in BODY."
            (upgrade-all-end
             (should (package-vc-tests-load-history-position
                      'upgrade-all-end :marker))))
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (let ((autoloads-pos
                 (should (package-vc-tests-load-history-position
                          pkg :autoloads))))
@@ -515,7 +514,7 @@ Return nil on timeout or the value of last form in BODY."
 (ert-deftest package-vc-tests-006-require ()
   (eval
    '(with-package-vc-tests-enviroment
-     (dolist (pkg (mapcar #'car package-vc-tests-packages))
+     (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
        (should (fboundp (intern (format "%s-func" pkg))))
        (should (autoloadp
                 (symbol-function (intern (format "%s-func" pkg)))))
@@ -527,7 +526,7 @@ Return nil on timeout or the value of last form in BODY."
      (let ((upgrade-all-end
             (should (package-vc-tests-load-history-position
                      'upgrade-all-end :marker))))
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (let ((main-pos (should (package-vc-tests-load-history-position
                                   pkg :main))))
            (should (< main-pos upgrade-all-end)))
@@ -544,7 +543,7 @@ Return nil on timeout or the value of last form in BODY."
        (should
         (package-vc-tests-package-vc-upgrade-wait
             5 (length package-vc-tests-packages)
-          (dolist (pkg (mapcar #'car package-vc-tests-packages))
+          (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
             (package-vc-upgrade
              (package-vc-tests-package-desc pkg t))
             (should (fboundp (intern (format "%s-func" pkg))))
@@ -569,7 +568,7 @@ Return nil on timeout or the value of last form in BODY."
            (upgrade-end
             (should (package-vc-tests-load-history-position
                      'upgrade-end :marker))))
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (let ((autoloads-pos
                 (should (package-vc-tests-load-history-position
                          pkg :autoloads)))
@@ -579,17 +578,46 @@ Return nil on timeout or the value of last form in BODY."
                (main-compiled-pos
                 (should (package-vc-tests-load-history-position
                          pkg :main-compiled))))
-           (should (< upgrade-end autoloads-pos upgrade-begin))
-           (should (< upgrade-end main-pos upgrade-begin))
            (should
-            (< upgrade-end main-compiled-pos upgrade-begin))))))))
+            (equal (format "%s: autoloads-pos between %s and %s"
+                                  pkg upgrade-end upgrade-begin)
+                          (format "%s: autoloads-pos %s %s and %s"
+                                  pkg
+                                  (if (< upgrade-end
+                                         autoloads-pos
+                                         upgrade-begin)
+                                      "between"
+                                    "is not between")
+                                  upgrade-end upgrade-begin)))
+           (should
+            (equal (format "%s: main-pos between %s and %s"
+                                  pkg upgrade-end upgrade-begin)
+                          (format "%s: main-pos %s %s and %s"
+                                  pkg
+                                  (if (< upgrade-end
+                                         main-pos
+                                         upgrade-begin)
+                                      "between"
+                                    "is not between")
+                                  upgrade-end upgrade-begin)))
+           (should
+            (equal (format "%s: main-compiled-pos between %s and %s"
+                                  pkg upgrade-end upgrade-begin)
+                          (format "%s: main-compiled-pos %s %s and %s"
+                                  pkg
+                                  (if (< upgrade-end
+                                         main-compiled-pos
+                                         upgrade-begin)
+                                      "between"
+                                    "is not between")
+                                  upgrade-end upgrade-begin)))))))))
 
 (ert-deftest package-vc-tests-009-rebuild ()
   (eval
    '(with-package-vc-tests-enviroment
      (package-vc-tests-reset-heads)
      (let ((heads (package-vc-tests-packages-heads)))
-       (dolist (pkg (mapcar #'car package-vc-tests-packages))
+       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (package-vc-rebuild
           (package-vc-tests-package-desc pkg t))
          (should (fboundp (intern (format "%s-func" pkg))))
@@ -608,7 +636,7 @@ Return nil on timeout or the value of last form in BODY."
 (ert-deftest package-vc-tests-010-prepare-patch ()
   (eval
    '(with-package-vc-tests-enviroment
-     (dolist (pkg-checkout-dir package-vc-tests-packages)
+     (pcase-dolist (`(,pkg . ,dir) package-vc-tests-packages)
        (cl-letf* ((call-count 0)
                   ((symbol-function #'package-maintainers)
                    (lambda (&rest _)
@@ -617,15 +645,12 @@ Return nil on timeout or the value of last form in BODY."
                    (lambda (addressee subject revisions)
                      (should (equal (file-name-as-directory
                                      default-directory)
-                                    (file-name-as-directory
-                                     (cdr pkg-checkout-dir))))
+                                    (file-name-as-directory dir)))
                      (should (equal "test-maintainers" addressee))
                      (should (equal "test-subject" subject))
                      (should (equal "test-revisions" revisions))
                      (cl-incf call-count))))
-         (package-vc-prepare-patch (package-vc-tests-package-desc
-                                    (car pkg-checkout-dir)
-                                    t)
+         (package-vc-prepare-patch (package-vc-tests-package-desc pkg t)
                                    "test-subject"
                                    "test-revisions")
          (should (eql 1 call-count)))))))
@@ -633,18 +658,16 @@ Return nil on timeout or the value of last form in BODY."
 (ert-deftest package-vc-tests-011-log-incoming ()
   (eval
    '(with-package-vc-tests-enviroment
-     (dolist (pkg-checkout-dir package-vc-tests-packages)
+     (pcase-dolist (`(,pkg . ,dir) package-vc-tests-packages)
        (cl-letf* ((call-count 0)
                   ((symbol-function #'vc-log-incoming)
                    (lambda ()
                      (interactive)
                      (should (equal (file-name-as-directory
                                      default-directory)
-                                    (file-name-as-directory
-                                     (cdr pkg-checkout-dir))))
+                                    (file-name-as-directory dir)))
                      (cl-incf call-count))))
-         (package-vc-log-incoming (package-vc-tests-package-desc
-                                   (car pkg-checkout-dir) t))
+         (package-vc-log-incoming (package-vc-tests-package-desc pkg t))
          (should (eql 1 call-count)))))))
 
 (provide 'package-vc-tests)
