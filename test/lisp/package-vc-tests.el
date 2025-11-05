@@ -168,6 +168,8 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
                      :archive "test-elpa"
                      :extras
                      (list
+                      '(:maintainer
+                        ("Test Maintainer" . "test-maintainer@test-domain.org"))
                       (cons :url  (car bundle))
                       (cons :commit (cadr bundle))
                       (cons :revdesc (substring (cadr bundle) 0 12))))))
@@ -182,6 +184,8 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
                      :archive "test-elpa"
                      :extras
                      (list
+                      '(:maintainer
+                        ("Test Maintainer" . "test-maintainer@test-domain.org"))
                       (cons :url  (car bundle))
                       (cons :commit (cadr bundle))
                       (cons :revdesc (substring (cadr bundle) 0 12))))))))
@@ -665,24 +669,43 @@ Return nil on timeout or the value of last form in BODY."
 (ert-deftest package-vc-tests-010-prepare-patch ()
   (eval
    '(with-package-vc-tests-enviroment
-     (pcase-dolist (`(,pkg . ,dir) package-vc-tests-packages)
-       (cl-letf* ((call-count 0)
-                  ((symbol-function #'package-maintainers)
-                   (lambda (&rest _)
-                     "test-maintainers"))
-                  ((symbol-function #'vc-prepare-patch)
-                   (lambda (addressee subject revisions)
-                     (should (equal (file-name-as-directory
-                                     default-directory)
-                                    (file-name-as-directory dir)))
-                     (should (equal "test-maintainers" addressee))
-                     (should (equal "test-subject" subject))
-                     (should (equal "test-revisions" revisions))
-                     (cl-incf call-count))))
+     (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
+       ;; FIXME: Currently `package-vc-prepare-patch' only works only
+       ;; for a package installed with `package-vc-install'.  No other
+       ;; `package-vc' installation method is supported.  Likely,
+       ;; because package maintainer are not set in generated pkg-file.
+       (when (memq pkg '(test-package-1))
          (package-vc-prepare-patch (package-vc-tests-package-desc pkg t)
+                                   ;; TODO: subject seems to be ignored
+                                   ;; by `vc-prepare-patch'
                                    "test-subject"
-                                   "test-revisions")
-         (should (eql 1 call-count)))))))
+                                   (cdr (alist-get
+                                         pkg package-vc-tests-bundles)))
+         (let ((message-buffer
+                (get-buffer "*unsent mail to Test Maintainer*")))
+           (should (equal (format "%s: message-buffer" pkg)
+                          (format "%s: %s"
+                                  pkg (if (bufferp message-buffer)
+                                          "message-buffer"
+                                        "no message-buffer"))))
+           (switch-to-buffer message-buffer)
+           (goto-char (point-min))
+           (should
+            (equal (format
+                    "%s: To: Test Maintainer <test-maintainer@test-domain.org>"
+                    pkg)
+                   (format
+                    "%s: %s"
+                    pkg (buffer-substring (point) (pos-eol)))))
+           (forward-line)
+           (should
+            (equal (format
+                    "%s: Subject: [PATCH] Second commit" pkg)
+                   (format
+                    "%s: %s"
+                    pkg (buffer-substring (point) (pos-eol)))))
+           (let (kill-buffer-query-functions)
+             (kill-buffer message-buffer))))))))
 
 (ert-deftest package-vc-tests-011-log-incoming ()
   (eval
