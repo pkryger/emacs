@@ -301,10 +301,11 @@ When ALL is non nil, check all packages under test."
            (autoloads-rx (rx
                           (literal (format "%s-autoloads.el" pkg))
                           string-end)))
-      (should-not (equal (cons dir elc-files)
-                         (list dir)))
+      (should (equal (format "%s: has elc-files" dir)
+                     (format "%s: %s elc-files"
+                             dir (if elc-files "has" "has no"))))
       (should-not (cl-find-if (lambda (elc)
-                                (string-match autoloads-rx  elc))
+                                (string-match autoloads-rx elc))
                               elc-files))
       (dolist (elc-file elc-files)
         (delete-file (expand-file-name elc-file dir))))))
@@ -429,10 +430,11 @@ When ALL is non nil, check all packages under test."
      (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
        (let ((commit (package-vc-commit
                       (package-vc-tests-package-desc pkg t))))
-         (should-not (equal (cons pkg commit)
-                            (list pkg)))
-         (should-not (equal (list pkg "unknown")
-                            (list pkg commit))))))))
+         (should (equal (format "%s: has commit" pkg)
+                        (format "%s: %s commit"
+                                pkg (if commit "has" "has no"))))
+         (should-not (equal (format "%s: unknown commit" pkg)
+                            (format "%s: %s commit" pkg commit))))))))
 
 (ert-deftest package-vc-tests-003-load-history-after-install ()
   (eval
@@ -447,7 +449,17 @@ When ALL is non nil, check all packages under test."
          (let ((autoloads-pos
                 (should (package-vc-tests-load-history-position
                          pkg :autoloads))))
-           (should (< install-end autoloads-pos install-begin)))
+           (should (equal (format "%s: autoloads-pos between %s and %s"
+                                  pkg install-end install-begin)
+                          (format "%s: autoloads-pos %s %s and %s"
+                                  pkg
+                                  (if (< install-end
+                                         autoloads-pos
+                                         install-begin)
+                                      "between"
+                                    "is not between")
+                                  install-end install-begin)
+                          )))
          (should-not (package-vc-tests-load-history-position
                       pkg :main))
          (should-not (package-vc-tests-load-history-position
@@ -505,7 +517,16 @@ Return nil on timeout or the value of last form in BODY."
          (let ((autoloads-pos
                 (should (package-vc-tests-load-history-position
                          pkg :autoloads))))
-           (should (< upgrade-all-end autoloads-pos upgrade-all-begin))
+           (should (equal (format "%s: autoloads-pos between %s and %s"
+                                  pkg upgrade-all-end upgrade-all-begin)
+                          (format "%s: autoloads-pos %s %s and %s"
+                                  pkg
+                                  (if (< upgrade-all-end
+                                         autoloads-pos
+                                         upgrade-all-begin)
+                                      "between"
+                                    "is not between")
+                                  upgrade-all-end upgrade-all-begin)))
            (should-not (package-vc-tests-load-history-position
                         pkg :main))
            (should-not (package-vc-tests-load-history-position
@@ -529,7 +550,15 @@ Return nil on timeout or the value of last form in BODY."
        (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
          (let ((main-pos (should (package-vc-tests-load-history-position
                                   pkg :main))))
-           (should (< main-pos upgrade-all-end)))
+           (should (equal (format "%s: main-pos less than %s"
+                                  pkg upgrade-all-end)
+                          (format "%s: main-pos %s than %s"
+                                  pkg
+                                  (if (< main-pos
+                                         upgrade-all-end)
+                                      "less"
+                                    "is not less")
+                                  upgrade-all-end))))
          (should-not (package-vc-tests-load-history-position
                       pkg :main-compiled)))))))
 
