@@ -493,11 +493,11 @@ this function successfully installs all given dependencies)."
 
 (defun package-vc--unpack-1 (pkg-desc)
   "Prepare PKG-DESC that is already checked-out.
-The checkout directory is determined by relevant pkg-spec or from `dir'
-slot of PKG-DESC.  This includes downloading missing dependencies,
-generating autoloads, generating a package description file (used to
-identify a package as a VC package later on), building documentation and
-marking the package as installed."
+When there's a relevant pkg-spec it is used for checkout directory.
+Otherwise `dir' slot of PKG-SPEC is used.  This includes downloading
+missing dependencies, generating autoloads, generating a package
+description file (used to identify a package as a VC package later on),
+building documentation and marking the package as installed."
   (let* (;; Main package directory, under `package-user-dir'.  This is
          ;; the same `checkout-dir' when package has been installed with
          ;; `package-vc-install'.
