@@ -28,8 +28,11 @@
 ;; denoted by digits in their name.  Also in many cases the subsequent
 ;; test often depends on the passing of the previous test.
 
-;; It is recommended to run this suite in a separate process, for
-;; example, in root of Emacs source directory:
+;; These tests load test packages with some test implementation, as well
+;; as `load-history' is being modified.  This may contaminate the
+;; running Emacs instance.  This, compounded with a need to run all
+;; tests in the order it is recommended to run this suite in a separate
+;; process, for example, in root of Emacs source directory:
 
 ;;   ./src/emacs -batch \
 ;;       -l ../test/lisp/package-vc-tests.el \
