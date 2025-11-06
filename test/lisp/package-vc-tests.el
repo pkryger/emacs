@@ -379,11 +379,11 @@ When ALL is non nil, check all packages under test."
 
    (let ((checkout-dir (expand-file-name "test-package-4"
                                          package-vc-tests-dir)))
-     (shell-command
-      (format "git clone -b master %s %s"
-              (car (alist-get 'test-package-4
-                              package-vc-tests-bundles))
-              checkout-dir))
+     (vc-git-clone
+      (car (alist-get 'test-package-4
+                      package-vc-tests-bundles))
+      checkout-dir
+      "master")
      (package-vc-install-from-checkout checkout-dir "test-package-4")
      (should (equal (format "file://%s" checkout-dir)
                     (plist-get (alist-get "test-package-4"
@@ -404,11 +404,11 @@ When ALL is non nil, check all packages under test."
 
    (let ((checkout-dir (expand-file-name "test-package-6"
                                          package-vc-tests-dir)))
-     (shell-command
-      (format "git clone -b master %s %s"
-              (car (alist-get 'test-package-6
-                              package-vc-tests-bundles))
-              checkout-dir))
+     (vc-git-clone
+      (car (alist-get 'test-package-6
+                      package-vc-tests-bundles))
+      checkout-dir
+      "master")
      (package-vc-install-from-checkout checkout-dir "test-package-6")
      (should (equal (format "file://%s" checkout-dir)
                     (plist-get (alist-get "test-package-6"
