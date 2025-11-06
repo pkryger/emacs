@@ -468,25 +468,29 @@ When ALL is non nil, check all packages under test."
        (should-not (package-vc-tests-load-history-position
                     pkg :main-compiled))))))
 
-(defmacro package-vc-tests-package-vc-upgrade-wait (seconds count &rest body)
-  "Wait up to SECONDS for COUNT packages upgrading BODY.
+(defmacro package-vc-tests-package-vc-async-wait (seconds count flags &rest body)
+  "Wait up to SECONDS for COUNT async vc commands with FLAGS called by BODY.
 Return nil on timeout or the value of last form in BODY."
-  (declare (indent 2))
-  `(letrec ((packages-count ,count)
-            (post-vc-command
-             (lambda (command _ flags)
-               ;; A crude filter for vc commands
-               (when (and (equal command "git")
-                          (string-prefix-p "*vc-git" (buffer-name)))
-                 (decf packages-count)))))
-     (add-hook 'vc-post-command-functions post-vc-command 100)
-     (unwind-protect
-         (with-timeout (,seconds nil)
-           (prog1
-               (progn ,@body)
-             (while (/= packages-count 0)
-               (sleep-for 0.1))))
-       (remove-hook 'vc-post-command-functions post-vc-command))))
+  (declare (indent 3))
+  (let ((count-sym (make-symbol "count"))
+        (post-vc-command-sym (make-symbol "post-vc-command")))
+    `(letrec ((,count-sym ,count)
+              (,post-vc-command-sym
+               (lambda (command _ command-flags)
+                 ;; A crude filter for vc commands
+                 (when (and (equal command "git")
+                            (cl-every (lambda (flag)
+                                        (member flag command-flags))
+                                      ,flags))
+                   (decf ,count-sym)))))
+       (add-hook 'vc-post-command-functions ,post-vc-command-sym 100)
+       (unwind-protect
+           (with-timeout (,seconds nil)
+             (prog1
+                 (progn ,@body)
+               (while (/= ,count-sym 0)
+                 (accept-process-output nil 0.01))))
+         (remove-hook 'vc-post-command-functions ,post-vc-command-sym)))))
 
 (ert-deftest package-vc-tests-004-upgrade-all ()
   (with-package-vc-tests-enviroment
@@ -495,10 +499,10 @@ Return nil on timeout or the value of last form in BODY."
    (let ((heads (package-vc-tests-packages-heads)))
      (package-vc-tests-reset-heads)
      (should
-      (package-vc-tests-package-vc-upgrade-wait
-       5 (length package-vc-tests-packages)
-       (package-vc-upgrade-all)
-       t))
+      (package-vc-tests-package-vc-async-wait
+          5 (length package-vc-tests-packages) '("pull")
+        (package-vc-upgrade-all)
+        t))
      (should (equal heads
                     (package-vc-tests-packages-heads))))
    (push (list (format "%s/upgrade-all-end" package-vc-tests-dir))
@@ -569,17 +573,17 @@ Return nil on timeout or the value of last form in BODY."
    (let ((heads (package-vc-tests-packages-heads)))
      (package-vc-tests-reset-heads)
      (should
-      (package-vc-tests-package-vc-upgrade-wait
-       5 (length package-vc-tests-packages)
-       (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
-         (package-vc-upgrade
-          (package-vc-tests-package-desc pkg t))
-         (should (fboundp (intern (format "%s-func" pkg))))
-         (should-not (autoloadp
-                      (symbol-function
+      (package-vc-tests-package-vc-async-wait
+          5 (length package-vc-tests-packages) '("pull")
+        (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
+          (package-vc-upgrade
+           (package-vc-tests-package-desc pkg t))
+          (should (fboundp (intern (format "%s-func" pkg))))
+          (should-not (autoloadp
+                       (symbol-function
                        (intern (format "%s-func" pkg)))))
-         (should-not (fboundp (intern (format "%s-old-func" pkg)))))
-       t))
+          (should-not (fboundp (intern (format "%s-old-func" pkg)))))
+        t))
      (should (equal heads
                     (package-vc-tests-packages-heads))))
    (push (list (format "%s/upgrade-end" package-vc-tests-dir))
