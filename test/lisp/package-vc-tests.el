@@ -705,17 +705,40 @@ Return nil on timeout or the value of last form in BODY."
 
 (ert-deftest package-vc-tests-011-log-incoming ()
   (with-package-vc-tests-enviroment
-   (pcase-dolist (`(,pkg . ,dir) package-vc-tests-packages)
-     (cl-letf* ((call-count 0)
-                ((symbol-function #'vc-log-incoming)
-                 (lambda ()
-                   (interactive)
-                   (should (equal (file-name-as-directory
-                                   default-directory)
-                                  (file-name-as-directory dir)))
-                   (cl-incf call-count))))
-       (package-vc-log-incoming (package-vc-tests-package-desc pkg t))
-       (should (eql 1 call-count))))))
+   (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
+     (should
+      (package-vc-tests-package-vc-async-wait
+          5 1 '("log" "--decorate")
+        (package-vc-log-incoming (package-vc-tests-package-desc pkg t))
+        t))
+     (let ((incoming-buffer (get-buffer "*vc-incoming*"))
+           (pattern (rx (literal
+                         (substring
+                          (cadr (alist-get pkg
+                                            package-vc-tests-bundles))
+                          0 7))
+                        (one-or-more any)
+                        "Second commit"
+                        line-end)))
+       (should (equal (format "%s: incoming-buffer" pkg)
+                      (format "%s: %s"
+                              pkg (if (bufferp incoming-buffer)
+                                      "incoming-buffer"
+                                    "no incoming-buffer"))))
+       (switch-to-buffer incoming-buffer)
+       (goto-char (point-min))
+       (should
+        (equal (format "%s: match" pkg)
+               (format "%s: %s"
+                       pkg
+                       (if (re-search-forward pattern (pos-eol) t)
+                           "match"
+                         (format "no match: %s %s"
+                                 pattern
+                                 (buffer-substring
+                                  (point-min) (pos-eol)))))))
+       (let (kill-buffer-query-functions)
+         (kill-buffer incoming-buffer))))))
 
 (provide 'package-vc-tests)
 
