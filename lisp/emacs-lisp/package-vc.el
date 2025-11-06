@@ -1057,7 +1057,8 @@ See also `vc-prepare-patch'."
   "Call `vc-log-incoming' for the package PKG-DESC."
   (interactive
    (list (package-vc--read-package-desc "Incoming log for package: " t)))
-  (let ((default-directory (package-vc--checkout-dir pkg-desc)))
+  (let ((default-directory (package-vc--checkout-dir pkg-desc))
+        (vc-deduce-backend-nonvc-modes t))
     (call-interactively #'vc-log-incoming)))
 
 (provide 'package-vc)
