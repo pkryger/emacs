@@ -299,18 +299,39 @@ position of a marker PKG."
         #'stringp
         (mapcar #'car load-history)))))))
 
+(defun package-vc-tests-valid-commit-p (_pkg commit)
+  "Return non-nil when COMMIT is a valid commit."
+  (and (stringp commit)
+       (not (string= commit "unknown"))))
+
+(defun package-vc-tests-in-strict-order-p (_pkg &rest args)
+  "Return non-nil when ARGS are in strict order."
+  (apply #'< args))
+
+(defun package-vc-tests-match-p (_pkg regexp string)
+  "Return non-nil when REGEXP matches STRING."
+  (string-match regexp string))
+
+(defun package-vc-tests-buffer-p (_pkg obj)
+  "Return non-nil when OBJ is a buffer."
+  (bufferp obj))
+
+(defun package-vc-tests-elc-files (pkg)
+  "Return elc files for PKG."
+  (when-let* ((dir (package-vc-tests-package-lisp-dir pkg))
+              (elc-files (directory-files
+                          dir nil (rx ".elc" string-end))))
+    elc-files))
+
 (defun package-vc-tests-assert-delete-elc ()
   "Assert that .elc files are in expected directories and delete them.
 When ALL is non nil, check all packages under test."
   (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
     (let* ((dir (package-vc-tests-package-lisp-dir pkg))
-           (elc-files (directory-files dir nil (rx ".elc" string-end)))
+           (elc-files (should (package-vc-tests-elc-files pkg)))
            (autoloads-rx (rx
-                          (literal (format "%s-autoloads.el" pkg))
+                          (literal (format "%s-autoloads.elc" pkg))
                           string-end)))
-      (should (equal (format "%s: has elc-files" dir)
-                     (format "%s: %s elc-files"
-                             dir (if elc-files "has" "has no"))))
       (should-not (cl-find-if (lambda (elc)
                                 (string-match autoloads-rx elc))
                               elc-files))
@@ -432,13 +453,10 @@ When ALL is non nil, check all packages under test."
 (ert-deftest package-vc-tests-002-commit ()
   (with-package-vc-tests-enviroment
    (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
-     (let ((commit (package-vc-commit
-                    (package-vc-tests-package-desc pkg t))))
-       (should (equal (format "%s: has commit" pkg)
-                      (format "%s: %s commit"
-                              pkg (if commit "has" "has no"))))
-       (should-not (equal (format "%s: unknown commit" pkg)
-                          (format "%s: %s commit" pkg commit)))))))
+     (should (package-vc-tests-valid-commit-p
+              pkg
+              (package-vc-commit
+               (package-vc-tests-package-desc pkg t)))))))
 
 (ert-deftest package-vc-tests-003-load-history-after-install ()
   (with-package-vc-tests-enviroment
@@ -452,17 +470,11 @@ When ALL is non nil, check all packages under test."
        (let ((autoloads-pos
               (should (package-vc-tests-load-history-position
                        pkg :autoloads))))
-         (should (equal (format "%s: autoloads-pos between %s and %s"
-                                pkg install-end install-begin)
-                        (format "%s: autoloads-pos %s %s and %s"
-                                pkg
-                                (if (< install-end
-                                       autoloads-pos
-                                       install-begin)
-                                    "between"
-                                  "is not between")
-                                install-end install-begin)
-                        )))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  install-end
+                  autoloads-pos
+                  install-begin)))
        (should-not (package-vc-tests-load-history-position
                     pkg :main))
        (should-not (package-vc-tests-load-history-position
@@ -522,16 +534,11 @@ Return nil on timeout or the value of last form in BODY."
        (let ((autoloads-pos
               (should (package-vc-tests-load-history-position
                        pkg :autoloads))))
-         (should (equal (format "%s: autoloads-pos between %s and %s"
-                                pkg upgrade-all-end upgrade-all-begin)
-                        (format "%s: autoloads-pos %s %s and %s"
-                                pkg
-                                (if (< upgrade-all-end
-                                       autoloads-pos
-                                       upgrade-all-begin)
-                                    "between"
-                                  "is not between")
-                                upgrade-all-end upgrade-all-begin)))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  upgrade-all-end
+                  autoloads-pos
+                  upgrade-all-begin))
          (should-not (package-vc-tests-load-history-position
                       pkg :main))
          (should-not (package-vc-tests-load-history-position
@@ -554,15 +561,10 @@ Return nil on timeout or the value of last form in BODY."
      (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
        (let ((main-pos (should (package-vc-tests-load-history-position
                                 pkg :main))))
-         (should (equal (format "%s: main-pos less than %s"
-                                pkg upgrade-all-end)
-                        (format "%s: main-pos %s than %s"
-                                pkg
-                                (if (< main-pos
-                                       upgrade-all-end)
-                                    "less"
-                                  "is not less")
-                                upgrade-all-end))))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  main-pos
+                  upgrade-all-end)))
        (should-not (package-vc-tests-load-history-position
                     pkg :main-compiled))))))
 
@@ -609,39 +611,21 @@ Return nil on timeout or the value of last form in BODY."
              (main-compiled-pos
               (should (package-vc-tests-load-history-position
                        pkg :main-compiled))))
-         (should
-          (equal (format "%s: autoloads-pos between %s and %s"
-                         pkg upgrade-end upgrade-begin)
-                 (format "%s: autoloads-pos %s %s and %s"
-                         pkg
-                         (if (< upgrade-end
-                                autoloads-pos
-                                upgrade-begin)
-                             "between"
-                           "is not between")
-                         upgrade-end upgrade-begin)))
-         (should
-          (equal (format "%s: main-pos between %s and %s"
-                         pkg upgrade-end upgrade-begin)
-                 (format "%s: main-pos %s %s and %s"
-                         pkg
-                         (if (< upgrade-end
-                                main-pos
-                                upgrade-begin)
-                             "between"
-                           "is not between")
-                         upgrade-end upgrade-begin)))
-         (should
-          (equal (format "%s: main-compiled-pos between %s and %s"
-                         pkg upgrade-end upgrade-begin)
-                 (format "%s: main-compiled-pos %s %s and %s"
-                         pkg
-                         (if (< upgrade-end
-                                main-compiled-pos
-                                upgrade-begin)
-                             "between"
-                           "is not between")
-                         upgrade-end upgrade-begin))))))))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  upgrade-end
+                  autoloads-pos
+                  upgrade-begin))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  upgrade-end
+                  main-pos
+                  upgrade-begin))
+         (should (package-vc-tests-in-strict-order-p
+                  pkg
+                  upgrade-end
+                  main-compiled-pos
+                  upgrade-begin)))))))
 
 (ert-deftest package-vc-tests-009-rebuild ()
   (with-package-vc-tests-enviroment
@@ -687,19 +671,17 @@ Return nil on timeout or the value of last form in BODY."
            (switch-to-buffer message-buffer)
            (goto-char (point-min))
            (should
-            (equal (format
-                    "%s: To: Test Maintainer <test-maintainer@test-domain.org>"
-                    pkg)
-                   (format
-                    "%s: %s"
-                    pkg (buffer-substring (point) (pos-eol)))))
+            (package-vc-tests-match-p
+             pkg
+             (rx
+              "To: Test Maintainer <test-maintainer@test-domain.org>")
+             (buffer-substring (point) (pos-eol))))
            (forward-line)
            (should
-            (equal (format
-                    "%s: Subject: test-subject" pkg)
-                   (format
-                    "%s: %s"
-                    pkg (buffer-substring (point) (pos-eol)))))
+            (package-vc-tests-match-p
+             pkg
+             (rx "Subject: test-subject")
+             (buffer-substring (point) (pos-eol))))
            (let (kill-buffer-query-functions)
              (kill-buffer message-buffer))))))))
 
@@ -715,28 +697,19 @@ Return nil on timeout or the value of last form in BODY."
            (pattern (rx (literal
                          (substring
                           (cadr (alist-get pkg
-                                            package-vc-tests-bundles))
+                                           package-vc-tests-bundles))
                           0 7))
                         (one-or-more any)
                         "Second commit"
                         line-end)))
-       (should (equal (format "%s: incoming-buffer" pkg)
-                      (format "%s: %s"
-                              pkg (if (bufferp incoming-buffer)
-                                      "incoming-buffer"
-                                    "no incoming-buffer"))))
+       (should (package-vc-tests-buffer-p pkg incoming-buffer))
        (switch-to-buffer incoming-buffer)
        (goto-char (point-min))
        (should
-        (equal (format "%s: match" pkg)
-               (format "%s: %s"
-                       pkg
-                       (if (re-search-forward pattern (pos-eol) t)
-                           "match"
-                         (format "no match: %s %s"
-                                 pattern
-                                 (buffer-substring
-                                  (point-min) (pos-eol)))))))
+        (package-vc-tests-match-p
+         pkg
+         pattern
+         (buffer-substring (point) (pos-eol))))
        (let (kill-buffer-query-functions)
          (kill-buffer incoming-buffer))))))
 
