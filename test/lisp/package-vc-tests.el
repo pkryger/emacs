@@ -299,6 +299,10 @@ position of a marker PKG."
         #'stringp
         (mapcar #'car load-history)))))))
 
+;; The following predicates and helper functions take an extra PKG
+;; argument.  This is needed for ERT to print package name in case of
+;; failure.
+
 (defun package-vc-tests-valid-commit-p (_pkg commit)
   "Return non-nil when COMMIT is a valid commit."
   (and (stringp commit)
