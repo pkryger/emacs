@@ -307,7 +307,9 @@ asynchronously."
 
 (defun package-vc--generate-description-file (pkg-desc pkg-file)
   "Generate a package description file for PKG-DESC and write it to PKG-FILE."
-  (let ((name (package-desc-name pkg-desc)))
+  (let ((name (package-desc-name pkg-desc))
+        (main-file (let ((file (package-vc--main-file pkg-desc)))
+                     (and (file-exists-p file) file))))
     (when (equal (package-desc-summary pkg-desc) package--default-summary)
       ;; We unset the package description if it is just the default
       ;; summary, so that the following heuristic can take effect.
@@ -315,13 +317,12 @@ asynchronously."
     ;; Infer the package description if missing.
     (unless (package-desc-summary pkg-desc)
       (setf (package-desc-summary pkg-desc)
-            (let ((main-file (package-vc--main-file pkg-desc)))
-              (or (package-desc-summary pkg-desc)
-                  (and-let* ((pkg (cadr (assq name package-archive-contents))))
-                    (package-desc-summary pkg))
-                  (and main-file (file-exists-p main-file)
-                       (lm-summary main-file))
-                  package--default-summary))))
+            (or (package-desc-summary pkg-desc)
+                (and-let* ((pkg (cadr (assq name package-archive-contents))))
+                  (package-desc-summary pkg))
+                (and main-file
+                     (lm-summary main-file))
+                package--default-summary)))
     (let ((print-level nil)
           (print-quoted t)
           (print-length nil))
@@ -351,6 +352,16 @@ asynchronously."
            (let ((extras (copy-alist (package-desc-extras pkg-desc))))
              (setf (alist-get :commit extras)
                    (package-vc-commit pkg-desc))
+             (when-let* (((null (alist-get :maintainer extras)))
+                         (main-file)
+                         (maintainers (lm-maintainers main-file)))
+               ;; Like in `pakcage-buffer-info', for backward
+               ;; compatibility, use a single cons-cell if there's
+               ;; only one maintainer.
+               (setf (alist-get :maintainer extras)
+                     (if (cdr maintainers)
+                         maintainers
+                       (car maintainers))))
              extras)
            )))
         "\n")
