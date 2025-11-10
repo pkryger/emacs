@@ -100,7 +100,12 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
   ;; Test packages sources are stored in bundle files produced by
   ;; git-bundle(1) and are stored in directory package-vc-resources.
   ;; Before executing body make sure that:
-  `(let* (package-archives
+  ;; - `package' is initialised, and there are no `package-archives'
+  `(let* ((package-archives (unless package--initialized
+                              (let (package-archives)
+                                (package-initialize)
+                                (package-vc--archives-initialize))
+                              nil))
           ;; - temporary location for packages and test files is ready
           (package-vc-tests-dir
            (or package-vc-tests-dir
@@ -214,9 +219,6 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
                       string-end)
                   'Git)
             vc-clone-heuristic-alist)))
-     ;; - `package' has been initialised:
-     (should package--initialized)
-
      ,@body))
 
 
@@ -369,8 +371,6 @@ When ALL is non nil, check all packages under test."
           package-vc-tests-packages))
 
 (ert-deftest package-vc-tests-000-install ()
-  (package-initialize)
-  (package-vc--archives-initialize)
   (with-package-vc-tests-enviroment
    (push (list (format "%s/install-begin" package-vc-tests-dir))
          load-history)
