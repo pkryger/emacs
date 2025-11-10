@@ -656,38 +656,33 @@ Return nil on timeout or the value of last form in BODY."
     ;; Ensure `vc-prepare-patch' respects subject from function
     (with-package-vc-tests-enviroment
      (pcase-dolist (`(,pkg . ,_) package-vc-tests-packages)
-       ;; FIXME: Currently `package-vc-prepare-patch' only works only
-       ;; for a package installed with `package-vc-install'.  No other
-       ;; `package-vc' installation method is supported.  Likely,
-       ;; because package maintainer are not set in generated pkg-file.
-       (when (memq pkg '(test-package-1))
-         (package-vc-prepare-patch (package-vc-tests-package-desc pkg t)
-                                   "test-subject"
-                                   (cdr (alist-get
-                                         pkg package-vc-tests-bundles)))
-         (let ((message-buffer
-                (get-buffer "*unsent mail to Test Maintainer*")))
-           (should (equal (format "%s: message-buffer" pkg)
-                          (format "%s: %s"
-                                  pkg (if (bufferp message-buffer)
-                                          "message-buffer"
-                                        "no message-buffer"))))
-           (switch-to-buffer message-buffer)
-           (goto-char (point-min))
-           (should
-            (package-vc-tests-match-p
-             pkg
-             (rx
-              "To: Test Maintainer <test-maintainer@test-domain.org>")
-             (buffer-substring (point) (pos-eol))))
-           (forward-line)
-           (should
-            (package-vc-tests-match-p
-             pkg
-             (rx "Subject: test-subject")
-             (buffer-substring (point) (pos-eol))))
-           (let (kill-buffer-query-functions)
-             (kill-buffer message-buffer))))))))
+       (package-vc-prepare-patch (package-vc-tests-package-desc pkg t)
+                                 "test-subject"
+                                 (cdr (alist-get
+                                       pkg package-vc-tests-bundles)))
+       (let ((message-buffer
+              (get-buffer "*unsent mail to Test Maintainer*")))
+         (should (equal (format "%s: message-buffer" pkg)
+                        (format "%s: %s"
+                                pkg (if (bufferp message-buffer)
+                                        "message-buffer"
+                                      "no message-buffer"))))
+         (switch-to-buffer message-buffer)
+         (goto-char (point-min))
+         (should
+          (package-vc-tests-match-p
+           pkg
+           (rx
+            "To: Test Maintainer <test-maintainer@test-domain.org>")
+           (buffer-substring (point) (pos-eol))))
+         (forward-line)
+         (should
+          (package-vc-tests-match-p
+           pkg
+           (rx "Subject: test-subject")
+           (buffer-substring (point) (pos-eol))))
+         (let (kill-buffer-query-functions)
+           (kill-buffer message-buffer)))))))
 
 (ert-deftest package-vc-tests-011-log-incoming ()
   (with-package-vc-tests-enviroment
