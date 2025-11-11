@@ -165,50 +165,35 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
           ;; - test packages are recognised by `package' and
           ;;   `package-vc' internals:
           (package-archive-contents
-           (list
-            (let ((bundle (alist-get 'test-package-1
-                                     package-vc-tests-bundles)))
-              (list 'test-package-1
-                    (package-desc-create
-                     :name 'test-package-1
-                     :version '(0 2)
-                     :reqs '((emacs (30.1)))
-                     :kind 'tar
-                     :archive "test-elpa"
-                     :extras
-                     (list
-                      '(:maintainer
-                        ("Test Maintainer" . "test-maintainer@test-domain.org"))
-                      (cons :url  (car bundle))
-                      (cons :commit (cadr bundle))
-                      (cons :revdesc (substring (cadr bundle) 0 12))))))
-            (let ((bundle (alist-get 'test-package-3
-                                     package-vc-tests-bundles)))
-              (list 'test-package-3
-                    (package-desc-create
-                     :name 'test-package-3
-                     :version '(0 2)
-                     :reqs '((emacs (30.1)))
-                     :kind 'tar
-                     :archive "test-elpa"
-                     :extras
-                     (list
-                      '(:maintainer
-                        ("Test Maintainer" . "test-maintainer@test-domain.org"))
-                      (cons :url  (car bundle))
-                      (cons :commit (cadr bundle))
-                      (cons :revdesc (substring (cadr bundle) 0 12))))))))
+           (mapcar
+            (lambda (pkg)
+              (let ((bundle (alist-get pkg
+                                       package-vc-tests-bundles)))
+                (list pkg
+                      (package-desc-create
+                       :name pkg
+                       :version '(0 2)
+                       :reqs '((emacs (30.1)))
+                       :kind 'tar
+                       :archive "test-elpa"
+                       :extras
+                       (list
+                        '(:maintainer
+                          ("Test Maintainer" . "test-maintainer@test-domain.org"))
+                        (cons :url  (car bundle))
+                        (cons :commit (cadr bundle))
+                        (cons :revdesc (substring (cadr bundle) 0 12)))))))
+            '(test-package-1 test-package-3)))
           (package-vc--archive-spec-alists
            (list
-            (list 'test-elpa
-                  (list 'test-package-1
-                        :url (car (alist-get 'test-package-1
-                                             package-vc-tests-bundles))
-                        :branch "master")
-                  (list 'test-package-3
-                        :url (car (alist-get 'test-package-3
-                                             package-vc-tests-bundles))
-                        :branch "master"))))
+            (cons 'test-elpa
+                  (mapcar
+                   (lambda (pkg)
+                     (list pkg
+                           :url (car (alist-get pkg
+                                                package-vc-tests-bundles))
+                           :branch "master"))
+                   '(test-package-1 test-package-3)))))
           (package-vc--archive-data-alist
            (list
             (list 'test-elpa :version 1 :default-vc 'Git)))
