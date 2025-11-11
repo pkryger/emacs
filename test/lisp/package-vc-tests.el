@@ -110,9 +110,10 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
           (package-vc-tests-dir
            (or package-vc-tests-dir
                (setq package-vc-tests-dir
-                     (make-temp-file "package-vc-tests-"
-                                     t
-                                     (format-time-string "-%Y%m%d.%H%M%S")))))
+                     (expand-file-name
+                      (make-temp-file "package-vc-tests-"
+                                      t
+                                      (format-time-string "-%Y%m%d.%H%M%S"))))))
           ;; - packages are installed into a test directory
           (package-user-dir (expand-file-name "elpa"
                                               package-vc-tests-dir))
