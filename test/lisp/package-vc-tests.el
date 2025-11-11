@@ -397,7 +397,7 @@ When ALL is non nil, check all packages under test."
                            'test-package-3)
                           checkout-dir)
      (package-vc-install-from-checkout checkout-dir)
-     (should (equal (format "file://%s" checkout-dir)
+     (should (equal (concat package-vc--url-scheme checkout-dir)
                     (plist-get (alist-get "test-package-3"
                                           package-vc-selected-packages
                                           nil nil #'string=)
@@ -411,7 +411,7 @@ When ALL is non nil, check all packages under test."
       checkout-dir
       "master")
      (package-vc-install-from-checkout checkout-dir "test-package-4")
-     (should (equal (format "file://%s" checkout-dir)
+     (should (equal (concat package-vc--url-scheme checkout-dir)
                     (plist-get (alist-get "test-package-4"
                                           package-vc-selected-packages
                                           nil nil #'string=)
@@ -436,7 +436,7 @@ When ALL is non nil, check all packages under test."
       checkout-dir
       "master")
      (package-vc-install-from-checkout checkout-dir "test-package-6")
-     (should (equal (format "file://%s" checkout-dir)
+     (should (equal (concat package-vc--url-scheme checkout-dir)
                     (plist-get (alist-get "test-package-6"
                                           package-vc-selected-packages
                                           nil nil #'string=)
