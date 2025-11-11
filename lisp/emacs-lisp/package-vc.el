@@ -84,6 +84,12 @@ the `clone' VC function."
 
 (defvar package-vc-selected-packages) ; pacify byte-compiler
 
+(defconst package-vc--url-scheme
+  (if (memq system-type '(ms-dos windows-nt cygwin))
+      "file:///"
+    "file://")
+  "Scheme for `:url' property in package spec.")
+
 ;;;###autoload
 (defun package-vc-install-selected-packages ()
   "Ensure packages specified in `package-vc-selected-packages' are installed."
@@ -183,9 +189,9 @@ located in a sub directory of the checkout, or the checkout has a sub
 directory named \"lisp\" or \"src\" that contains .el files and return
 that instead."
   (let* ((pkg-spec (package-vc--desc->spec pkg-desc))
-         (url (plist-get pkg-spec :url))
-         (pkg-dir (pcase url
-                    ((rx "file://" (let checkout-dir (+ any)))
+         (pkg-dir (pcase (plist-get pkg-spec :url)
+                    ((rx (literal package-vc--url-scheme)
+                         (let checkout-dir (+ any)))
                      checkout-dir)
                     (_ (package-desc-dir pkg-desc)))))
     (expand-file-name
@@ -1023,7 +1029,8 @@ interactively), DIR must be an absolute file name."
     ;; We store a custom package specification so that it is available
     ;; for `package-vc--unpack-1' as well as `package-vc--checkout-dir'
     ;; can later retrieve the actual checkout.
-    (package-vc--save-selected-packages name (list :url (concat "file://" dir)))
+    (package-vc--save-selected-packages
+     name (list :url (concat package-vc--url-scheme dir)))
     (package-vc--unpack-1
      (package-desc-create
       :name (intern name)
