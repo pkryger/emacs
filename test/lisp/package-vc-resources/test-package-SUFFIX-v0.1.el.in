@@ -3,7 +3,7 @@
 ;; Homepage: https://test-domain.org
 ;; Maintainer: Test Maintainer <test-maintainer@test-domain.org>
 ;; Package-Requires: ((emacs "30.1"))
-;; Version: 0.2
+;; Version: 0.1
 
 ;;; Commentary:
 ;;
@@ -11,9 +11,17 @@
 
 ;;; Code:
 
+(require 'test-package-SUFFIX-lib)
+
 ;;;###autoload
-(defun test-package-SUFFIX-func ()
-  "Test.")
+(defun test-package-SUFFIX-func (arg)
+  ;; checkdoc-params: (arg)
+  "Test function for `test-package-SUFFIX'."
+  (test-package-SUFFIX-mac arg))
+
+;;;###autoload
+(defun test-package-SUFFIX-old-func ()
+  "Old test function for `test-package-SUFFIX'.")
 
 (provide 'test-package-SUFFIX)
 
