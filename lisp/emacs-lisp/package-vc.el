@@ -621,6 +621,21 @@ building documentation and marking the package as installed."
       (when pkgs
         (setf (cdr pkgs) (seq-remove #'package-vc-p (cdr pkgs)))))
 
+    ;; Remove all compiled files to allow for macros to be used from
+    ;; source files, regardless of order of source files compilation and
+    ;; load ordering.  As a side effect there are no compiled files for
+    ;; source files that no longer exist.
+    (dolist (elc-file (directory-files-recursively
+                       lisp-dir
+                       (rx string-start
+                           (not ".") (zero-or-more any) ".elc"
+                           string-end)
+                       nil
+                       (lambda (dir)
+                         (and (file-accessible-directory-p dir)
+                              (not (string-prefix-p "." dir))))))
+        (delete-file elc-file))
+
     ;; Update package-alist.
     (let* ((new-desc (package-load-descriptor pkg-dir))
            (compile-desc (package-desc-create :name (package-desc-name new-desc)
