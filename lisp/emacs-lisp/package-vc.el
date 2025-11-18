@@ -687,12 +687,12 @@ building documentation and marking the package as installed."
                       (lm-header "version"))))
                (vc-working-revision main-file)
                (if missing
-                   (format
-                    " Failed to install the following dependencies: %s"
-                    (mapconcat
-                     (lambda (p)
-                       (format "%s (%s)" (car p) (cadr p)))
-                     missing ", "))
+                    (format
+                     " Failed to install the following dependencies: %s"
+                     (mapconcat
+                      (lambda (p)
+                        (format "%s (%s)" (car p) (cadr p)))
+                      missing ", "))
                  "")))
     t))
 
