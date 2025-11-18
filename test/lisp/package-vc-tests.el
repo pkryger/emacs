@@ -561,7 +561,7 @@ position of a marker PKG."
   "Install PKG with `package-vc-install'."
   (push (list (package-vc-tests-load-history-marker 'install-begin))
         load-history)
-  (package-vc-install pkg)
+  (should (eq t (package-vc-install pkg)))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
   (should-not (alist-get (symbol-name pkg)
@@ -572,9 +572,10 @@ position of a marker PKG."
   "Install PKG with `package-vc-install' (not on ELPA)."
   (push (list (package-vc-tests-load-history-marker 'install-begin))
         load-history)
-  (package-vc-install `(,pkg
-                        :url ,(car package-vc-tests-bundle)
-                        :branch "master"))
+  (should (eq t
+              (package-vc-install `(,pkg
+                                    :url ,(car package-vc-tests-bundle)
+                                    :branch "master"))))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
   (should (equal (car package-vc-tests-bundle)
@@ -587,12 +588,16 @@ position of a marker PKG."
   "Install PKG with `package-vc-install-from-checkout'.
 Make checkout with `package-vc-checkout'."
    (let ((checkout-dir (car (alist-get pkg package-vc-tests-packages))))
-     (package-vc-checkout (package-vc-tests-package-desc
-                           pkg)
-                          checkout-dir)
+     (let ((buffer (package-vc-checkout (package-vc-tests-package-desc
+                                         pkg)
+                                        checkout-dir)))
+       (should (package-vc-tests-buffer-p pkg buffer))
+       (should (string-prefix-p (symbol-name pkg)
+                                (buffer-name buffer))))
      (push (list (package-vc-tests-load-history-marker 'install-begin))
            load-history)
-     (package-vc-install-from-checkout checkout-dir)
+     (should (eq t
+                 (package-vc-install-from-checkout checkout-dir)))
      (push (list (package-vc-tests-load-history-marker 'install-end))
            load-history)
      (should (equal (concat package-vc--url-scheme checkout-dir)
@@ -610,7 +615,9 @@ Make checkout with git(1)."
                    "master")
     (push (list (package-vc-tests-load-history-marker 'install-begin))
           load-history)
-    (package-vc-install-from-checkout checkout-dir (symbol-name pkg))
+    (should (eq t
+                (package-vc-install-from-checkout checkout-dir
+                                                  (symbol-name pkg))))
     (push (list (package-vc-tests-load-history-marker 'install-end))
           load-history)
     (should (equal (concat package-vc--url-scheme checkout-dir)
@@ -1008,7 +1015,7 @@ Return nil on timeout or the value of last form in BODY."
 
 (ert-deftest package-vc-tests-pkg-spec-doc-make-shell-command ()
   (let ((package-vc-allow-build-commands t))
-    ;; Only `packge-vc-install' runs make and shell command
+    ;; Only `packgae-vc-install' runs make and shell command
     (dolist (pkg '(test-package-1 test-package-7 test-package-9))
       (with-package-vc-tests-installed pkg
         (let ((checkout-dir (car (alist-get
