@@ -273,6 +273,26 @@ position of a marker PKG."
   (let ((default-directory (cadr (assoc pkg package-vc-tests-packages))))
     (vc-git-working-revision nil)))
 
+(defun package-vc-tests-make-spec (pkg)
+  "Return a pkg-spec for PKG."
+  (let ((lisp-dir
+         (cadr (alist-get pkg package-vc-tests-packages))))
+    (append
+     (list pkg
+           :url (car package-vc-tests-bundle)
+           ;; Branch needs to be specified in a pkg-spec, as cloning
+           ;; from a git bundle won't checkout a default branch.
+           :branch "master"
+           :doc (let ((doc-file (format "%s.texi" pkg)))
+                  (if lisp-dir
+                      (file-name-concat lisp-dir doc-file)
+                    doc-file))
+           :make (format "build-%s" pkg)
+           :shell-command (format "touch %s.cmd-build" pkg))
+     (and lisp-dir
+          (not (member lisp-dir '("lisp" "src")))
+          (list :lisp-dir lisp-dir)))))
+
 (defmacro with-package-vc-tests-installed (pkg &rest body)
   "Eval BODY with PKG installed in a test environment."
   (declare (indent 1) (debug t))
@@ -401,29 +421,8 @@ position of a marker PKG."
           (package-vc--archive-spec-alists
            (list
             (cons 'test-elpa
-                  (mapcar
-                   (lambda (pkg)
-                     (let ((lisp-dir
-                            (cadr (alist-get
-                                   ,pkg package-vc-tests-packages))))
-                       (append
-                        (list pkg
-                              :url (car package-vc-tests-bundle)
-                              :branch "master"
-                              :doc (let ((doc-file
-                                          (format "%s.texi" ,pkg)))
-                                     (if lisp-dir
-                                         (file-name-concat lisp-dir
-                                                           doc-file)
-                                       doc-file))
-                              :make (format "build-%s" ,pkg)
-                              :shell-command (format
-                                              "touch %s.cmd-build"
-                                              ,pkg))
-                        (and lisp-dir
-                             (not (member lisp-dir '("lisp" "src")))
-                             (list :lisp-dir lisp-dir)))))
-                   package-vc-tests-elpa-packages))))
+                  (mapcar #'package-vc-tests-make-spec
+                          package-vc-tests-elpa-packages))))
           (package-vc--archive-data-alist
            '((test-elpa :version 1 :default-vc Git)))
           ;; - `vc-guess-backend-url' is recognising bundles as `Git'
@@ -508,11 +507,7 @@ position of a marker PKG."
   "Install PKG with `package-vc-install' (not on ELPA)."
   (push (list (package-vc-tests-load-history-marker 'install-begin))
         load-history)
-  ;; Branch needs to be specified in a pkg-spec, as cloning from a
-  ;; bundle won't checkout a default branch.
-  (should (eq t (package-vc-install `(,pkg
-                                      :url ,(car package-vc-tests-bundle)
-                                      :branch "master"))))
+  (should (eq t (package-vc-install (package-vc-tests-make-spec pkg))))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
   (should (equal (car package-vc-tests-bundle)
@@ -586,18 +581,25 @@ Return nil on timeout or the value of last form in BODY."
          (remove-hook 'vc-post-command-functions ,post-vc-command-sym)))))
 
 (defmacro package-vc-test-deftest (name args &rest body)
+  "For each `package-vc-under-test' define a test with NAME.
+Execute BODY as a test body with a package under test installed.  Bind
+car of ARGS (a symbol) to name of the package.  Bind cdr of ARGS
+before installing the package."
   (declare (debug (&define [&name "test@" symbolp]
 			   sexp
 			   def-body))
            (indent 2))
-  (unless (length= args 1)
-    (error "`package-vc' tests have to take a single argument"))
+  (when (length< args 1)
+    (error "`package-vc' tests have to take at least one argument"))
+  (unless (symbolp (car-safe args))
+    (error "`package-vc' tests first argument has to be a symbol"))
   (let ((file (or (macroexp-file-name) buffer-file-name))
         (tests '()))
     (dolist (pkg package-vc-tests-under-test)
       (let ((name (intern (format "package-vc-tests-%s/%s" name pkg))))
         (push
-         `(cl-macrolet ((skip-unless (form) `(ert--skip-unless ,form)))
+         `(cl-macrolet ((skip-when (form) `(ert--skip-when ,form))
+                        (skip-unless (form) `(ert--skip-unless ,form)))
             (ert-set-test
              ',name
              (make-ert-test
@@ -606,7 +608,8 @@ Return nil on timeout or the value of last form in BODY."
               :file-name ,file
               :body
               (lambda ()
-                (let ((,(car args) ',pkg))
+                (let ((,(car args) ',pkg)
+                      ,@(cdr args))
                   (with-package-vc-tests-installed ,(car args)
                     ,@body))
                 nil))))
@@ -912,39 +915,39 @@ Return nil on timeout or the value of last form in BODY."
         (let (kill-buffer-query-functions)
           (kill-buffer incoming-buffer))))
 
-(package-vc-test-deftest pkg-spec-doc-make-shell-command (pkg)
+(package-vc-test-deftest pkg-spec-doc-make-shell-command
+    (pkg (package-vc-allow-build-commands t))
   ;; Only `package-vc-install' runs make and shell command
-  (skip-unless (eq (caddr (alist-get pkg package-vc-tests-packages))
-                   #'package-vc-tests-install-from-elpa))
-  (let ((package-vc-allow-build-commands t))
-    (let ((checkout-dir (car (alist-get
-                              pkg package-vc-tests-packages))))
-      (should (file-exists-p
-               (expand-file-name
-                (format "%s.make-build" pkg)
-                checkout-dir)))
-      (should (file-exists-p
-               (expand-file-name
-                (format "%s.cmd-build" pkg)
-                checkout-dir))))
-    (should (cl-member-if (lambda (dir)
-                            (and (stringp dir)
-                                 (string-prefix-p package-vc-tests-dir
-                                                  dir)))
-                          Info-directory-list))
-    (let ((info-file
-           (expand-file-name (format "%s.info" pkg)
-                             (car (alist-get
-                                   pkg package-vc-tests-packages)))))
-      (should (file-exists-p info-file))
-      (ert-with-test-buffer
-          (:name (format "*package-vc-tests: %s.info*" pkg))
-        (insert-file-contents info-file)
-        (goto-char (point-min))
-        (should (re-search-forward
-                 (format "First chapter for %s" pkg)))
-        (should (re-search-forward
-                 (format "Second chapter for %s" pkg)))))))
+  (skip-unless (memq (caddr (alist-get pkg package-vc-tests-packages))
+                     '(package-vc-tests-install-from-elpa
+                       package-vc-tests-install-from-spec)))
+  (let ((checkout-dir (car (alist-get pkg package-vc-tests-packages))))
+    (should (file-exists-p
+             (expand-file-name
+              (format "%s.make-build" pkg)
+              checkout-dir)))
+    (should (file-exists-p
+             (expand-file-name
+              (format "%s.cmd-build" pkg)
+              checkout-dir))))
+  (should (cl-member-if
+           (lambda (dir)
+             (and (stringp dir)
+                  (string-prefix-p package-vc-tests-dir dir)))
+           Info-directory-list))
+  (let ((info-file
+         (expand-file-name (format "%s.info" pkg)
+                           (car (alist-get
+                                 pkg package-vc-tests-packages)))))
+    (should (file-exists-p info-file))
+    (ert-with-test-buffer
+        (:name (format "*package-vc-tests: %s.info*" pkg))
+      (insert-file-contents info-file)
+      (goto-char (point-min))
+      (should (re-search-forward
+               (format "First chapter for %s" pkg)))
+      (should (re-search-forward
+               (format "Second chapter for %s" pkg))))))
 
 (provide 'package-vc-tests)
 
