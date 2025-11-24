@@ -623,27 +623,27 @@ before installing the package."
 
 (package-vc-test-deftest install-post-conditions (pkg)
   (let ((install-begin
-           (should (package-vc-tests-load-history-position
-                    'install-begin :marker)))
-          (install-end
-           (should (package-vc-tests-load-history-position
-                    'install-end :marker)))
-          (autoloads-pos
-           (should (package-vc-tests-load-history-position
-                    pkg :autoloads))))
-      (should (< install-end autoloads-pos install-begin))
-      (should-not (package-vc-tests-load-history-position
-                   pkg :main))
-      (should-not (package-vc-tests-load-history-position
-                   pkg :main-compiled)))
-    (should (equal (package-vc--main-file
-                    (package-vc-tests-package-desc pkg t))
-                   (package-vc-tests-package-main-file pkg)))
-    (should (equal (package-vc-commit
-                    (package-vc-tests-package-desc pkg t))
-                   (cadr package-vc-tests-bundle)))
-    (package-vc-tests-assert-elc pkg)
-    (package-vc-tests-assert-package-alist pkg '(0 2)))
+         (should (package-vc-tests-load-history-position
+                  'install-begin :marker)))
+        (install-end
+         (should (package-vc-tests-load-history-position
+                  'install-end :marker)))
+        (autoloads-pos
+         (should (package-vc-tests-load-history-position
+                  pkg :autoloads))))
+    (should (< install-end autoloads-pos install-begin))
+    (should-not (package-vc-tests-load-history-position
+                 pkg :main))
+    (should-not (package-vc-tests-load-history-position
+                 pkg :main-compiled)))
+  (should (equal (package-vc--main-file
+                  (package-vc-tests-package-desc pkg t))
+                 (package-vc-tests-package-main-file pkg)))
+  (should (equal (package-vc-commit
+                  (package-vc-tests-package-desc pkg t))
+                 (cadr package-vc-tests-bundle)))
+  (package-vc-tests-assert-elc pkg)
+  (package-vc-tests-assert-package-alist pkg '(0 2)))
 
 (package-vc-test-deftest require (pkg)
   (should (fboundp (intern (format "%s-func" pkg))))
@@ -897,28 +897,28 @@ before installing the package."
 
 (package-vc-test-deftest log-incoming (pkg)
   (package-vc-tests-reset-head^ pkg)
-      (should
-       (package-vc-tests-package-vc-async-wait
-           5 1 '("log" "--decorate")
-         (package-vc-log-incoming (package-vc-tests-package-desc pkg t))
-         t))
-      (let ((incoming-buffer (get-buffer "*vc-incoming*"))
-            (pattern (rx (literal
-                          (substring
-                           (cadr package-vc-tests-bundle)
-                           0 7))
-                         (one-or-more any)
-                         "Second commit"
-                         line-end)))
-        (should (bufferp incoming-buffer))
-        (switch-to-buffer incoming-buffer)
-        (goto-char (point-min))
-        (should
-         (string-match
-          pattern
-          (buffer-substring (point) (pos-eol))))
-        (let (kill-buffer-query-functions)
-          (kill-buffer incoming-buffer))))
+  (should
+   (package-vc-tests-package-vc-async-wait
+       5 1 '("log" "--decorate")
+     (package-vc-log-incoming (package-vc-tests-package-desc pkg t))
+     t))
+  (let ((incoming-buffer (get-buffer "*vc-incoming*"))
+        (pattern (rx (literal
+                      (substring
+                       (cadr package-vc-tests-bundle)
+                       0 7))
+                     (one-or-more any)
+                     "Second commit"
+                     line-end)))
+    (should (bufferp incoming-buffer))
+    (switch-to-buffer incoming-buffer)
+    (goto-char (point-min))
+    (should
+     (string-match
+      pattern
+      (buffer-substring (point) (pos-eol))))
+    (let (kill-buffer-query-functions)
+      (kill-buffer incoming-buffer))))
 
 (package-vc-test-deftest pkg-spec-doc-make-shell-command
     (pkg (package-vc-allow-build-commands t))
