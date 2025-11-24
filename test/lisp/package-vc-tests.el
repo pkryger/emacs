@@ -429,7 +429,7 @@ position of a marker PKG."
           ;;   repositories:
           (vc-clone-heuristic-alist
            `((,(rx "test-package-" (1+ digit) ".bundle" eos)
-              Git)
+              . Git)
              ,@vc-clone-heuristic-alist))
           ;; - ensure that `package-alist' and
           ;;   `package-vc-selected-packages' are empty
