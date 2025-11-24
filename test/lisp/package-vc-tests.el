@@ -165,23 +165,45 @@ is to mimic `package-vc--read-package-desc'."
 
 (defun package-vc-tests-load-history-marker (name)
   "Return a `load-history' marker with NAME."
-  (expand-file-name (symbol-name name) package-vc-tests-dir))
+  (file-truename
+   (expand-file-name (symbol-name name) package-vc-tests-dir)))
 
 (defun package-vc-tests-load-history-pattern (pkg type)
   "Return a regexp pattern for PKG's file of TYPE."
   (pcase type
     (:autoloads
-     (rx (literal (file-name-concat
-                   package-user-dir
-                   (symbol-name pkg)
-                   (format "%s-autoloads.el" pkg)))
+     (rx (literal (file-truename
+                   (file-name-concat
+                    package-user-dir
+                    (symbol-name pkg)
+                    (format "%s-autoloads.el" pkg))))
          eos))
     (:main
-     (rx (literal (package-vc-tests-package-main-file pkg)) eos))
+     (rx (literal (file-truename
+                   (package-vc-tests-package-main-file pkg)))
+         eos))
     (:main-compiled
-     (rx (literal (package-vc-tests-package-main-file pkg)) "c" eos))
+     (rx (literal (file-truename
+                   (package-vc-tests-package-main-file pkg)))
+         "c" eos))
     (:marker
-     (regexp-quote (package-vc-tests-load-history-marker pkg)))))
+     (regexp-quote (file-truename
+                    (package-vc-tests-load-history-marker pkg))))))
+
+(defun package-vc-tests-load-history-interesting-entries ()
+  "Return interesting entries in `load-history'.
+An entry in `load-history' is interesting when it starts with
+`package-vc-tests-dir'."
+  (let ((interesting-entry
+         (rx bos (literal (file-truename package-vc-tests-dir)))))
+    (mapcan
+     (lambda (ent)
+       (and (consp ent)
+            (stringp (car ent))
+            (let ((file-name (file-truename (car ent))))
+              (and (string-match interesting-entry file-name)
+                   (list file-name)))))
+     load-history)))
 
 (defun package-vc-tests-load-history-position (pkg type)
   "Return a PKG's file of TYPE position in `load-history'.
@@ -190,20 +212,10 @@ Otherwise, if TYPE is `:main' return a position of PKG main file (not
 compiled).  Otherwise, if TYPE is `:main-compiled' return a position of
 PKG compiled main file.  Otherwise, if TYPE is `:marker' return a
 position of a marker PKG."
-  (let ((pkg-file (package-vc-tests-load-history-pattern pkg type))
-        (interesting-entry
-         (rx string-start
-             (literal (file-truename package-vc-tests-dir)))))
+  (let ((pkg-file (package-vc-tests-load-history-pattern pkg type)))
     (cl-position-if
      (lambda (file) (string-match pkg-file file))
-     (mapcan
-      (lambda (ent)
-        (and (consp ent)
-             (stringp (car ent))
-             (let ((file-name (file-truename (car ent))))
-               (and (string-match interesting-entry file-name)
-                    (list file-name)))))
-      load-history))))
+     (package-vc-tests-load-history-interesting-entries))))
 
 (defun package-vc-tests-explain-load-history-position (pkg type)
   "Explain `package-vc-tests-load-history' failed for PKG of TYPE."
@@ -211,7 +223,8 @@ position of a marker PKG."
          (concat "..."
                  (substring
                   (package-vc-tests-load-history-pattern pkg type)
-                  (length (rx (literal package-vc-tests-dir))))))
+                  (length (regexp-quote
+                           (file-truename package-vc-tests-dir))))))
         (reason
          (if-let* ((pos (package-vc-tests-load-history-position
                          pkg type)))
@@ -219,21 +232,14 @@ position of a marker PKG."
            '(not found in load-history)))
         (entries
          (cl-loop
-          with len = (length package-vc-tests-dir)
-          for hist in load-history
-          when (and (consp hist)
-                    (stringp (car hist))
-                    (string-prefix-p package-vc-tests-dir (car hist)))
-          collect (concat "..." (substring (car hist) len)))))
+          with len = (length (file-truename package-vc-tests-dir))
+          for hist in (package-vc-tests-load-history-interesting-entries)
+          collect (concat "..." (substring hist len)))))
     (append (list 'pattern pattern) reason (list entries))))
 
 (put #'package-vc-tests-load-history-position
      'ert-explainer
      #'package-vc-tests-explain-load-history-position)
-
-;; The following predicates and helper functions take an extra PKG
-;; argument.  This is needed for ERT to print package name in case of
-;; failure.
 
 (defun package-vc-tests-elc-files (pkg)
   "Return elc files for PKG."
