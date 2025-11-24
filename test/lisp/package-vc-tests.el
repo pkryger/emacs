@@ -491,8 +491,7 @@ position of a marker PKG."
                                       (and (stringp dir)
                                            (string-match pattern dir)))
                                     Info-directory-list)))
-       (if (or (eq package-vc-tests-preserve-temporary t)
-               (eq package-vc-tests-preserve-temporary ,pkg)
+       (if (or (memq package-vc-tests-preserve-temporary '(t ,pkg))
                (and (listp package-vc-tests-preserve-temporary)
                     (memq ,pkg package-vc-tests-preserve-temporary)))
            (message "package-vc-tests: preserving temporary directory %s"
