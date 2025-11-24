@@ -95,10 +95,9 @@ When LISP-DIR is non-nil place the NAME file under LISP-DIR."
                             in-file)))
                  (file-name-concat lisp-dir file))))
     (unless (zerop (call-process
-                    "m4" (expand-file-name in-file resource-dir)
+                    "sed" (expand-file-name in-file resource-dir)
                     `(:file ,file) nil
-                    (format "--define=SUFFIX=%s" suffix)
-                    "--prefix-builtins"))
+                    (format "s/SUFFIX/%s/g" suffix)))
       (error "Failed to invoke M4 on %s" in-file))
     (vc-git-command nil 0 nil "add" ".")))
 
