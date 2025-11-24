@@ -523,7 +523,7 @@ Make checkout with `package-vc-checkout'."
     (let ((buffer (package-vc-checkout (package-vc-tests-package-desc
                                         pkg)
                                        checkout-dir)))
-      (should (bufferp pkg buffer))
+      (should (bufferp buffer))
       (should (string-prefix-p (symbol-name pkg) (buffer-name buffer))))
     (push (list (package-vc-tests-load-history-marker 'install-begin))
           load-history)
@@ -865,7 +865,7 @@ Return nil on timeout or the value of last form in BODY."
                               (cdr package-vc-tests-bundle))
     (let ((message-buffer
            (should (get-buffer "*unsent mail to Test Maintainer*"))))
-      (should (bufferp pkg message-buffer))
+      (should (bufferp message-buffer))
       (switch-to-buffer message-buffer)
       (goto-char (point-min))
       (should
@@ -898,7 +898,7 @@ Return nil on timeout or the value of last form in BODY."
                          (one-or-more any)
                          "Second commit"
                          line-end)))
-        (should (bufferp pkg incoming-buffer))
+        (should (bufferp incoming-buffer))
         (switch-to-buffer incoming-buffer)
         (goto-char (point-min))
         (should
