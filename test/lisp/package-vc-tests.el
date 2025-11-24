@@ -597,18 +597,19 @@ Return nil on timeout or the value of last form in BODY."
     (dolist (pkg package-vc-tests-under-test)
       (let ((name (intern (format "package-vc-tests-%s/%s" name pkg))))
         (push
-         `(ert-set-test
-           ',name
-           (make-ert-test
-            :name ',name
-            :tags '(package-vc)
-            :file-name ,file
-            :body
-            (lambda ()
-              (let ((,(car args) ',pkg))
-                (with-package-vc-tests-installed ,(car args)
-                  ,@body))
-              nil)))
+         `(cl-macrolet ((skip-unless (form) `(ert--skip-unless ,form)))
+            (ert-set-test
+             ',name
+             (make-ert-test
+              :name ',name
+              :tags '(package-vc)
+              :file-name ,file
+              :body
+              (lambda ()
+                (let ((,(car args) ',pkg))
+                  (with-package-vc-tests-installed ,(car args)
+                    ,@body))
+                nil))))
          tests)))
     `(progn ,@tests)))
 
@@ -908,15 +909,16 @@ Return nil on timeout or the value of last form in BODY."
         (goto-char (point-min))
         (should
          (string-match
-          pkg
           pattern
           (buffer-substring (point) (pos-eol))))
         (let (kill-buffer-query-functions)
           (kill-buffer incoming-buffer))))
 
 (package-vc-test-deftest pkg-spec-doc-make-shell-command (pkg)
+  ;; Only `package-vc-install' runs make and shell command
+  (skip-unless (eq (caddr (alist-get pkg package-vc-tests-packages))
+                   #'package-vc-tests-install-from-elpa))
   (let ((package-vc-allow-build-commands t))
-    ;; Only `package-vc-install' runs make and shell command
     (let ((checkout-dir (car (alist-get
                               pkg package-vc-tests-packages))))
       (should (file-exists-p
