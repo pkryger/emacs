@@ -625,7 +625,9 @@ Return nil on timeout or the value of last form in BODY."
     (should (equal (package-vc--main-file
                     (package-vc-tests-package-desc pkg t))
                    (package-vc-tests-package-main-file pkg)))
-    (should (equal (package-vc-tests-package-desc pkg t) "unknown"))
+    (should (equal (package-vc-commit
+                    (package-vc-tests-package-desc pkg t))
+                   (cadr package-vc-tests-bundle)))
     (package-vc-tests-assert-elc pkg)
     (package-vc-tests-assert-package-alist pkg '(0 2)))
 
