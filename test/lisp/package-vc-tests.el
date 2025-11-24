@@ -876,14 +876,12 @@ Return nil on timeout or the value of last form in BODY."
       (goto-char (point-min))
       (should
        (string-match
-        pkg
         (rx
          "To: Test Maintainer <test-maintainer@test-domain.org>")
         (buffer-substring (point) (pos-eol))))
       (forward-line)
       (should
        (string-match
-        pkg
         (rx "Subject: test-subject")
         (buffer-substring (point) (pos-eol))))
       (let (kill-buffer-query-functions)
