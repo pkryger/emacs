@@ -397,6 +397,8 @@ position of a marker PKG."
                                       (cadr package-vc-tests-bundle)
                                       0 12))))))
             package-vc-tests-elpa-packages))
+          ;; Branch needs to be specified in a pkg-spec, as cloning from
+          ;; a bundle won't checkout a default branch.
           (package-vc--archive-spec-alists
            (list
             (cons 'test-elpa
@@ -507,7 +509,11 @@ position of a marker PKG."
   "Install PKG with `package-vc-install' (not on ELPA)."
   (push (list (package-vc-tests-load-history-marker 'install-begin))
         load-history)
-  (should (eq t (package-vc-install `(,pkg :url ,(car package-vc-tests-bundle)))))
+  ;; Branch needs to be specified in a pkg-spec, as cloning from a
+  ;; bundle won't checkout a default branch.
+  (should (eq t (package-vc-install `(,pkg
+                                      :url ,(car package-vc-tests-bundle)
+                                      :branch "master"))))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
   (should (equal (car package-vc-tests-bundle)
