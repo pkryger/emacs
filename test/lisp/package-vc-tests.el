@@ -269,7 +269,7 @@ position of a marker PKG."
     (should (equal (list pkg version)
                    (list pkg (package-desc-version pkg-desc))))))
 
-(defun package-vc-tests-reset-head (pkg)
+(defun package-vc-tests-reset-head^ (pkg)
   "Reset to HEAD^ checkout for PKG."
   (let ((default-directory (cadr (assoc pkg package-vc-tests-packages))))
     (vc-git-command nil 0 nil "reset" "--hard" "HEAD^")))
@@ -587,7 +587,7 @@ Return nil on timeout or the value of last form in BODY."
          (remove-hook 'vc-post-command-functions ,post-vc-command-sym)))))
 
 (defmacro package-vc-test-deftest (name args &rest body)
-  "For each `package-vc-under-test' define a test with NAME.
+  "For each `package-vc-tests-under-test' define a test with NAME.
 Execute BODY as a test body with a package under test installed.  Bind
 car of ARGS (a symbol) to name of the package.  Bind cdr of ARGS
 before installing the package."
@@ -667,7 +667,7 @@ before installing the package."
 
 (package-vc-test-deftest upgrade (pkg)
   (let ((head (package-vc-tests-package-head pkg)))
-    (package-vc-tests-reset-head pkg)
+    (package-vc-tests-reset-head^ pkg)
     (push (list (package-vc-tests-load-history-marker
                  'upgrade-begin))
           load-history)
@@ -707,7 +707,7 @@ before installing the package."
 (package-vc-test-deftest upgrade-after-require (pkg)
   (should (require pkg))
   (let ((head (package-vc-tests-package-head pkg)))
-    (package-vc-tests-reset-head pkg)
+    (package-vc-tests-reset-head^ pkg)
     (push (list (package-vc-tests-load-history-marker
                  'upgrade-begin))
           load-history)
@@ -750,7 +750,7 @@ before installing the package."
 
 (package-vc-test-deftest upgrade-all (pkg)
   (let ((head (package-vc-tests-package-head pkg)))
-    (package-vc-tests-reset-head pkg)
+    (package-vc-tests-reset-head^ pkg)
     (push (list (package-vc-tests-load-history-marker
                  'upgrade-all-begin))
           load-history)
@@ -790,7 +790,7 @@ before installing the package."
 (package-vc-test-deftest upgrade-all-after-require (pkg)
   (should (require pkg))
   (let ((head (package-vc-tests-package-head pkg)))
-    (package-vc-tests-reset-head pkg)
+    (package-vc-tests-reset-head^ pkg)
     (push (list (package-vc-tests-load-history-marker
                  'upgrade-all-begin))
           load-history)
@@ -832,7 +832,7 @@ before installing the package."
   (package-vc-tests-assert-package-alist pkg '(0 2)))
 
 (package-vc-test-deftest rebuild (pkg)
-  (package-vc-tests-reset-head pkg)
+  (package-vc-tests-reset-head^ pkg)
   (let ((head (package-vc-tests-package-head pkg)))
     (package-vc-rebuild
      (package-vc-tests-package-desc pkg t))
@@ -853,7 +853,7 @@ before installing the package."
 
 (package-vc-test-deftest rebuild-after-require (pkg)
   (should (require pkg))
-  (package-vc-tests-reset-head pkg)
+  (package-vc-tests-reset-head^ pkg)
   (let ((head (package-vc-tests-package-head pkg)))
     (package-vc-rebuild
      (package-vc-tests-package-desc pkg t))
@@ -897,7 +897,7 @@ before installing the package."
         (kill-buffer message-buffer)))))
 
 (package-vc-test-deftest log-incoming (pkg)
-  (package-vc-tests-reset-head pkg)
+  (package-vc-tests-reset-head^ pkg)
       (should
        (package-vc-tests-package-vc-async-wait
            5 1 '("log" "--decorate")
