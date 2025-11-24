@@ -72,7 +72,7 @@ with `make-temp-file', which see.")
 
 (defvar package-vc-tests-dir)
 (defvar package-vc-tests-packages)
-(defvar package-vc-tests-bundle)
+(defvar package-vc-tests-repository)
 
 ;; TODO: add test for deleting packages, with asserting
 ;; `package-vc-selected-packages'
@@ -101,16 +101,14 @@ When LISP-DIR is non-nil place the NAME file under LISP-DIR."
       (error "Failed to invoke M4 on %s" in-file))
     (vc-git-command nil 0 nil "add" ".")))
 
-(defun package-vc-tests-create-bundle (suffix &optional lisp-dir)
-  "Create a test package bundle with SUFFIX.
+(defun package-vc-tests-create-repository (suffix &optional lisp-dir)
+  "Create a test package repository with SUFFIX.
 If LISP-DIR is non-nil place sources of the package in LISP-DIR."
   (let* ((name (format "test-package-%s" suffix))
          (repo-dir (expand-file-name (file-name-concat "repo" name)
                                      package-vc-tests-dir)))
     (make-directory (expand-file-name (or lisp-dir ".") repo-dir) t)
-    (let ((default-directory repo-dir)
-          (bundle-file (expand-file-name (format "%s.bundle" name)
-                                         package-vc-tests-dir)))
+    (let ((default-directory repo-dir))
       (vc-git-command nil 0 nil "init" "-b" "master")
       (package-vc-tests-add
        suffix "test-package-SUFFIX-lib-v0.1.el.in" lisp-dir)
@@ -129,17 +127,18 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
       (package-vc-tests-add
        suffix "test-package-SUFFIX-v0.2.el.in" lisp-dir)
       (vc-git-command nil 0 nil "commit" "-m" "Second commit")
-      (vc-git-command nil 0 nil
-                      "bundle" "create" bundle-file "master")
-      (list bundle-file (vc-git-working-revision nil)))))
+      (list repo-dir (vc-git-working-revision nil)))))
 
-(defun package-vc-tests-package-desc (package &optional installed)
-  "Return descriptor of PACKAGE.
+(defun package-vc-tests-package-desc (pkg &optional installed)
+  "Return descriptor of PKG.
 When INSTALLED is non-nil the descriptor will come from `package-alist'.
 Otherwise the descriptor will be from `package-archive-contents'.  This
 is to mimic `package-vc--read-package-desc'."
-  (cadr (assoc package (if installed package-alist package-archive-contents)
-               #'string=)))
+  (cadr (assq pkg (if installed package-alist package-archive-contents))))
+
+(defun package-vc-tests-package-spec (pkg)
+  "Return pkg-spec for PKG from `package-vc-selected-packages'."
+  (cdr (assoc pkg package-vc-selected-packages #'string=)))
 
 (defun package-vc-tests-package-lisp-dir (pkg)
   "Return a Lisp directory of PKG."
@@ -285,10 +284,7 @@ position of a marker PKG."
          (cadr (alist-get pkg package-vc-tests-packages))))
     (append
      (list pkg
-           :url (car package-vc-tests-bundle)
-           ;; Branch needs to be specified in a pkg-spec, as cloning
-           ;; from a git bundle won't checkout a default branch.
-           :branch "master"
+           :url (car package-vc-tests-repository)
            :doc (let ((doc-file (format "%s.texi" pkg)))
                   (if lisp-dir
                       (file-name-concat lisp-dir doc-file)
@@ -302,9 +298,9 @@ position of a marker PKG."
 (defmacro with-package-vc-tests-installed (pkg &rest body)
   "Eval BODY with PKG installed in a test environment."
   (declare (indent 1) (debug t))
-  ;; git-bundle(1) produces test packages sources in bundle files, based
-  ;; on skeleton files in directory package-vc-resources.  Before
-  ;; executing body make sure that:
+  ;; Create a test package sources repository, based on skeleton files
+  ;; in directory package-vc-resources.  Before executing body make sure
+  ;; that:
   ;;
   ;; - `package' has been initialised, and there are no
   ;;   `package-archives' defined
@@ -382,13 +378,13 @@ position of a marker PKG."
               "custom-dir"
               package-vc-tests-install-from-elpa)))
           ;; - create a test package bundle
-          (package-vc-tests-bundle
+          (package-vc-tests-repository
            (let* ((pkg-name (symbol-name ,pkg))
                   (suffix (and (string-match
                                 (rx ?- (group (1+ (not ?-))) eos)
                                 pkg-name)
                                (match-string 1 pkg-name))))
-             (package-vc-tests-create-bundle
+             (package-vc-tests-create-repository
               suffix (cadr (alist-get ,pkg package-vc-tests-packages)))))
           ;; - find all packages that are present in a test ELPA
           (package-vc-tests-elpa-packages
@@ -416,10 +412,10 @@ position of a marker PKG."
                       '(:maintainer
                         ("Test Maintainer"
                          . "test-maintainer@test-domain.org"))
-                      (cons :url  (car package-vc-tests-bundle))
-                      (cons :commit (cadr package-vc-tests-bundle))
+                      (cons :url  (car package-vc-tests-repository))
+                      (cons :commit (cadr package-vc-tests-repository))
                       (cons :revdesc (substring
-                                      (cadr package-vc-tests-bundle)
+                                      (cadr package-vc-tests-repository)
                                       0 12))))))
             package-vc-tests-elpa-packages))
           ;; Branch needs to be specified in a pkg-spec, as cloning from
@@ -505,8 +501,7 @@ position of a marker PKG."
   (should (eq t (package-vc-install pkg)))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
-  (should-not (alist-get pkg package-vc-selected-packages
-                         nil nil #'string=)))
+  (should-not (package-vc-tests-package-spec pkg)))
 
 (defun package-vc-tests-install-from-spec (pkg)
   "Install PKG with `package-vc-install' (not on ELPA)."
@@ -515,10 +510,8 @@ position of a marker PKG."
   (should (eq t (package-vc-install (package-vc-tests-make-spec pkg))))
   (push (list (package-vc-tests-load-history-marker 'install-end))
         load-history)
-  (should (equal (car package-vc-tests-bundle)
-                 (plist-get (alist-get (symbol-name pkg)
-                                       package-vc-selected-packages
-                                       nil nil #'string=)
+  (should (equal (car package-vc-tests-repository)
+                 (plist-get (package-vc-tests-package-spec pkg)
                             :url))))
 
 (defun pakcage-vc-tests-checkout-from-elpa-install-from-checkout (pkg)
@@ -537,16 +530,14 @@ Make checkout with `package-vc-checkout'."
     (push (list (package-vc-tests-load-history-marker 'install-end))
           load-history)
     (should (equal (concat package-vc--url-scheme checkout-dir)
-                   (plist-get (alist-get (symbol-name pkg)
-                                         package-vc-selected-packages
-                                         nil nil #'string=)
+                   (plist-get (package-vc-tests-package-spec pkg)
                               :url)))))
 
 (defun package-vc-tests-checkout-with-git-install-from-checkout (pkg)
   "Install PKG with `package-vc-install-from-checkout'.
 Make checkout with git(1)."
   (let ((checkout-dir (car (alist-get pkg package-vc-tests-packages))))
-    (vc-git-clone  (car package-vc-tests-bundle)
+    (vc-git-clone  (car package-vc-tests-repository)
                    checkout-dir
                    "master")
     (push (list (package-vc-tests-load-history-marker 'install-begin))
@@ -557,9 +548,7 @@ Make checkout with git(1)."
     (push (list (package-vc-tests-load-history-marker 'install-end))
           load-history)
     (should (equal (concat package-vc--url-scheme checkout-dir)
-                   (plist-get (alist-get (symbol-name pkg)
-                                         package-vc-selected-packages
-                                         nil nil #'string=)
+                   (plist-get (package-vc-tests-package-spec pkg)
                               :url)))))
 
 (defmacro package-vc-tests-package-vc-async-wait (seconds count flags &rest body)
@@ -641,7 +630,7 @@ before installing the package."
                  (package-vc-tests-package-main-file pkg)))
   (should (equal (package-vc-commit
                   (package-vc-tests-package-desc pkg t))
-                 (cadr package-vc-tests-bundle)))
+                 (cadr package-vc-tests-repository)))
   (package-vc-tests-assert-elc pkg)
   (package-vc-tests-assert-package-alist pkg '(0 2)))
 
@@ -876,7 +865,7 @@ before installing the package."
   (let ((vc-prepare-patches-separately nil))
     (package-vc-prepare-patch (package-vc-tests-package-desc pkg t)
                               "test-subject"
-                              (cdr package-vc-tests-bundle))
+                              (cdr package-vc-tests-repository))
     (let ((message-buffer
            (should (get-buffer "*unsent mail to Test Maintainer*"))))
       (should (bufferp message-buffer))
@@ -905,7 +894,7 @@ before installing the package."
   (let ((incoming-buffer (get-buffer "*vc-incoming*"))
         (pattern (rx (literal
                       (substring
-                       (cadr package-vc-tests-bundle)
+                       (cadr package-vc-tests-repository)
                        0 7))
                      (one-or-more any)
                      "Second commit"
