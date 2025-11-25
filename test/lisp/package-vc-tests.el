@@ -98,7 +98,7 @@ When LISP-DIR is non-nil place the NAME file under LISP-DIR."
                     "sed" (expand-file-name in-file resource-dir)
                     `(:file ,file) nil
                     (format "s/SUFFIX/%s/g" suffix)))
-      (error "Failed to invoke M4 on %s" in-file))
+      (error "Failed to invoke sed on %s" in-file))
     (vc-git-command nil 0 nil "add" ".")))
 
 (defun package-vc-tests-create-repository (suffix &optional lisp-dir)
@@ -131,8 +131,8 @@ If LISP-DIR is non-nil place sources of the package in LISP-DIR."
 
 (defun package-vc-tests-package-desc (pkg &optional installed)
   "Return descriptor of PKG.
-When INSTALLED is non-nil the descriptor will come from `package-alist'.
-Otherwise the descriptor will be from `package-archive-contents'.  This
+When INSTALLED is non-nil the descriptor comes from `package-alist'.
+Otherwise the descriptor comes from `package-archive-contents'.  This
 is to mimic `package-vc--read-package-desc'."
   (cadr (assq pkg (if installed package-alist package-archive-contents))))
 
@@ -152,15 +152,15 @@ is to mimic `package-vc--read-package-desc'."
   (file-name-concat (package-vc-tests-package-lisp-dir pkg)
                     (format "%s.el" pkg)))
 
-;; When a package source is being recompiled - for example as result of
-;; `pakckage-vc-upgrade' or `package-vc-rebuild' - it is also reloaded
-;; [1] to ensure that the most recent version of compiled code is
-;; available to Emacs.  There are a few tests that add markers in
-;; `load-history' before executing such functions.  And then follow up
-;; tests use these markers to assert that expected package files are in
-;; correct places in the `load-history'.
+;; When `pakckage-vc-upgrade', `package-vc-rebuild', or other a
+;; package-vc function re-compiles a package's source the package also
+;; reloaded [1] to ensure that the most recent version of compiled code
+;; is available to Emacs.  Some tests add markers in `load-history'
+;; before executing such functions.  And then follow up tests use these
+;; markers to assert that expected package files are in correct places
+;; in the `load-history'.
 ;;
-;; [1] Only when a file has been loaded previously.
+;; [1] Only when a file has been previously loaded.
 
 (defun package-vc-tests-load-history-marker (name)
   "Return a `load-history' marker with NAME."
@@ -439,6 +439,9 @@ position of a marker PKG."
           package-vc-selected-packages
           ;; - don't save any customization
           (user-init-file nil)
+          (custom-file nil)
+          ;; - don't register projects
+          (package-vc-register-as-project nil)
           ;; - FIXME: something sets `default-directory' to last
           ;;   checkout directory after `package-vc-checkout', which
           ;;   causes problems when this macro deletes the temporary
@@ -518,9 +521,10 @@ position of a marker PKG."
   "Install PKG with `package-vc-install-from-checkout'.
 Make checkout with `package-vc-checkout'."
   (let ((checkout-dir (car (alist-get pkg package-vc-tests-packages))))
-    (let ((buffer (package-vc-checkout (package-vc-tests-package-desc
+    (let* ((uniquify-buffer-name-style nil)
+           (buffer (package-vc-checkout (package-vc-tests-package-desc
                                         pkg)
-                                       checkout-dir)))
+                                        checkout-dir)))
       (should (bufferp buffer))
       (should (string-prefix-p (symbol-name pkg) (buffer-name buffer))))
     (push (list (package-vc-tests-load-history-marker 'install-begin))
@@ -550,6 +554,16 @@ Make checkout with git(1)."
     (should (equal (concat package-vc--url-scheme checkout-dir)
                    (plist-get (package-vc-tests-package-spec pkg)
                               :url)))))
+
+;; Some of VC commands used by package-vc execute VC operations
+;; asynchronously.  When such an operation executes as a part of test
+;; body, the test needs to wait for the operation to finish before
+;; asserting post conditions.  The maximum wait time should be at least
+;; a single order of magnitude higher than what the operation usually
+;; takes.  This decreases probability of false positives (for example
+;; when execution takes place on a busy machine). On the other hand the
+;; value cannot be too large to ensure reasonable execution time in case
+;; of a legitimate failure.
 
 (defmacro package-vc-tests-package-vc-async-wait (seconds count flags &rest body)
   "Wait up to SECONDS for COUNT async vc commands with FLAGS called by BODY.
