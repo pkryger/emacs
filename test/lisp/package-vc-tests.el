@@ -56,19 +56,24 @@
       test-package-8
       test-package-9)))
 
-(defvar package-vc-tests-preserve-temporary nil
-  "When non-nil preserve temporary files produced by tests.
+(defvar package-vc-tests-preserve-artefacts nil
+  "When non-nil preserve temporary files and buffers produced by tests.
 Each test produces a new temporary directory for each package under
 test.  This leads to creation of [length of
 `package-vc-tests-under-test'] times [number of tests executed]
-temporary directories for each tests run.  When this variable is nil
-then delete all temporary directories as soon as they are no longer
-needed.  When this variable is a symbol, then preserve temporary
-directories for the package that matches the symbol.  When this variable
-is a list of symbol, then preserve temporary directories for each
-package that matches symbol in the list.  When this variable is t then
-preserve all temporary directories.  Tests create temporary directories
-with `make-temp-file', which see.")
+temporary directories for each tests run.  Tests create temporary
+directories with `make-temp-file', which see.
+
+In addition some tests may produce temporary buffers, for example when
+building a documentation.
+
+When this variable is nil then delete temporary directories and kill
+temporary buffers as soon as they are no longer needed.  When this
+variable is a symbol, then preserve temporary directories and buffers
+for the package that matches the symbol.  When this variable is a list
+of symbols, then preserve temporary directories and buffers for each
+package that matches a symbol in the list.  When this variable is t then
+preserve all temporary directories.")
 
 (defvar package-vc-tests-dir)
 (defvar package-vc-tests-packages)
@@ -217,7 +222,7 @@ position of a marker PKG."
      (package-vc-tests-load-history-interesting-entries))))
 
 (defun package-vc-tests-explain-load-history-position (pkg type)
-  "Explain `package-vc-tests-load-history' failed for PKG of TYPE."
+  "Explain why `package-vc-tests-load-history' failed for PKG of TYPE."
   (let ((pattern
          (concat "..."
                  (substring
@@ -239,6 +244,36 @@ position of a marker PKG."
 (put #'package-vc-tests-load-history-position
      'ert-explainer
      #'package-vc-tests-explain-load-history-position)
+
+(defun package-vc-tests-log-buffer-name (pkg type)
+  "Return name for action TYPE log buffer for PKG .
+See `package-vc--build-documentation' and `package-vc--make' for format
+names."
+  (format " *package-vc %s: %s*" type pkg))
+
+(defun package-vc-tests-log-buffer-exists (pkg type)
+  "Return non-nil when log buffer for action TYPE exists for PKG."
+  (when-let* ((name (package-vc-tests-log-buffer-name pkg type)))
+    (get-buffer name)))
+
+(defun package-vc-tests-explain-log-buffer (pkg type)
+  "Explain why `package-vc-tests-log-buffer-exists' failed for TYPE action for PKG."
+  (if-let* ((name (package-vc-tests-log-buffer-name pkg type))
+            (buffer (get-buffer name))
+            (sep (make-string 80 ?-)))
+      (progn
+        (message "package-vc-tests: Contents of log-buffer %s\n%s\n%s\n%s"
+                 name
+                 sep
+                 (with-current-buffer buffer
+                   (buffer-string))
+                 sep)
+        `(log-buffer ,name exists))
+    `(log-buffer ,name does not exist)))
+
+(put #'package-vc-tests-log-buffer-exists
+     'ert-explainer
+     #'package-vc-tests-explain-log-buffer)
 
 (defun package-vc-tests-elc-files (pkg)
   "Return elc files for PKG."
@@ -490,12 +525,23 @@ position of a marker PKG."
                                       (and (stringp dir)
                                            (string-match pattern dir)))
                                     Info-directory-list)))
-       (if (or (memq package-vc-tests-preserve-temporary '(t ,pkg))
-               (and (listp package-vc-tests-preserve-temporary)
-                    (memq ,pkg package-vc-tests-preserve-temporary)))
-           (message "package-vc-tests: preserving temporary directory %s"
-                    package-vc-tests-dir)
-         (delete-directory package-vc-tests-dir t)))))
+       (let ((buffers
+              (delq nil
+                    (mapcar (lambda (type)
+                              (get-buffer
+                               (package-vc-tests-log-buffer-name type
+                                                                 ,pkg)))
+                            '(doc make)))))
+         (if (or (memq package-vc-tests-preserve-artefacts '(t ,pkg))
+                 (and (listp package-vc-tests-preserve-artefacts)
+                      (memq ,pkg package-vc-tests-preserve-artefacts)))
+             (message
+              "package-vc-tests: preserving temporary directory: %s%s"
+              package-vc-tests-dir
+              (and buffers (format " and buffers: %s" buffers)))
+           (delete-directory package-vc-tests-dir t)
+           (dolist (buffer buffers)
+             (kill-buffer buffer)))))))
 
 (defun package-vc-tests-install-from-elpa (pkg)
   "Install PKG with `package-vc-install'."
@@ -938,6 +984,7 @@ before installing the package."
              (expand-file-name
               (format "%s.cmd-build" pkg)
               checkout-dir))))
+  (should-not (package-vc-tests-log-buffer-exists 'doc pkg))
   (should (cl-member-if
            (lambda (dir)
              (and (stringp dir)
