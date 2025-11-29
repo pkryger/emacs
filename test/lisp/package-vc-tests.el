@@ -54,7 +54,9 @@
       test-package-6
       test-package-7
       test-package-8
-      test-package-9)))
+      test-package-9)
+    "List of packages names to test.
+See function `package-vc-tests-packages' for definitions of packages."))
 
 (defvar package-vc-tests-preserve-artefacts nil
   "When non-nil preserve temporary files and buffers produced by tests.
@@ -78,6 +80,67 @@ preserve all temporary directories.")
 (defvar package-vc-tests-dir)
 (defvar package-vc-tests-packages)
 (defvar package-vc-tests-repository)
+
+(defun package-vc-tests-packages ()
+  "Return a list of package definitions to test.
+Each entry is in a form of (PKG CHECKOUT-DIR LISP-DIR INSTALL-FUN),
+where PKG is a package name (a symbol), CHECKOUT-DIR is an expected
+checkout directory, LISP-DIR is a directory with package's
+sources (relative to CHECKOUT-DIR), and INSTALL-FUN is a function that
+checkouts and install the package."
+  `(;; checkout and install with `package-vc-install' (on ELPA)
+    (test-package-1
+     ,(expand-file-name "test-package-1" package-user-dir)
+     nil
+     package-vc-tests-install-from-elpa)
+    ;; checkout and install with `package-vc-install' (not on ELPA)
+    (test-package-2
+     ,(expand-file-name "test-package-2" package-user-dir)
+     nil
+     package-vc-tests-install-from-spec)
+    ;; checkout with `package-vc-checktout' and install with
+    ;; `package-vc-install-from-checkout' (on ELPA)
+    (test-package-3
+     ,(expand-file-name "test-package-3" package-vc-tests-dir)
+     nil
+     pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
+    ;; checkout with git and install with
+    ;; `package-vc-install-from-checkout'
+    (test-package-4
+     ,(expand-file-name "test-package-4" package-vc-tests-dir)
+     nil
+     package-vc-tests-checkout-with-git-install-from-checkout)
+    ;; sources in "lisp" sub directory, checkout and install with
+    ;; `package-vc-install' (not on ELPA)
+    (test-package-5
+     ,(expand-file-name "test-package-5" package-user-dir)
+     "lisp"
+     package-vc-tests-install-from-spec)
+    ;; sources in "lisp" sub directory, checkout with git and install
+    ;; with `package-vc-install-from-checkout'
+    (test-package-6
+     ,(expand-file-name "test-package-6" package-vc-tests-dir)
+     "lisp"
+     package-vc-tests-checkout-with-git-install-from-checkout)
+    ;; sources in "src" sub directory, checkout and install with
+    ;; `package-vc-install' (on ELPA)
+    (test-package-7
+     ,(expand-file-name "test-package-7" package-user-dir)
+     "src"
+     package-vc-tests-install-from-elpa)
+    ;; sources in "src" sub directory, checkout with
+    ;; `package-vc-checktout' and install with
+    ;; `package-vc-install-from-checkout' (on ELPA)
+    (test-package-8
+     ,(expand-file-name "test-package-8" package-vc-tests-dir)
+     nil
+     pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
+    ;; sources in "custom-dir" sub directory, checkout and install with
+    ;; `package-vc-install' (on ELPA)
+    (test-package-9
+     ,(expand-file-name "test-package-9" package-user-dir)
+     "custom-dir"
+     package-vc-tests-install-from-elpa)))
 
 ;; TODO: add test for deleting packages, with asserting
 ;; `package-vc-selected-packages'
@@ -330,8 +393,8 @@ names."
           (not (member lisp-dir '("lisp" "src")))
           (list :lisp-dir lisp-dir)))))
 
-(defmacro with-package-vc-tests-installed (pkg &rest body)
-  "Eval BODY with PKG installed in a test environment."
+(defmacro with-package-vc-tests-environment (pkg &rest body)
+  "Eval BODY within a test environment set up for PKG."
   (declare (indent 1) (debug t))
   ;; Create a test package sources repository, based on skeleton files
   ;; in directory package-vc-resources.  Before executing body make sure
@@ -355,63 +418,7 @@ names."
                                               package-vc-tests-dir))
           ;; - define test packages, their checkout locations, lisp
           ;;   directories, and install functions
-          (package-vc-tests-packages
-           `(;; checkout and install with `package-vc-install' (on
-             ;; ELPA)
-             (test-package-1
-              ,(expand-file-name "test-package-1" package-user-dir)
-              nil
-              package-vc-tests-install-from-elpa)
-             ;; checkout and install with `package-vc-install' (not on
-             ;; ELPA)
-             (test-package-2
-              ,(expand-file-name "test-package-2" package-user-dir)
-              nil
-              package-vc-tests-install-from-spec)
-             ;; checkout with `package-vc-checktout' and install with
-             ;; `package-vc-install-from-checkout' (on ELPA)
-             (test-package-3
-              ,(expand-file-name "test-package-3" package-vc-tests-dir)
-              nil
-              pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
-             ;; checkout with git and install with
-             ;; `package-vc-install-from-checkout'
-             (test-package-4
-              ,(expand-file-name "test-package-4" package-vc-tests-dir)
-              nil
-              package-vc-tests-checkout-with-git-install-from-checkout)
-             ;; sources in "lisp" sub directory, checkout and install
-             ;; with `package-vc-install' (not on ELPA)
-             (test-package-5
-              ,(expand-file-name "test-package-5" package-user-dir)
-              "lisp"
-              package-vc-tests-install-from-spec)
-             ;; sources in "lisp" sub directory, checkout with git and
-             ;; install with `package-vc-install-from-checkout'
-             (test-package-6
-              ,(expand-file-name "test-package-6" package-vc-tests-dir)
-              "lisp"
-              package-vc-tests-checkout-with-git-install-from-checkout)
-
-             ;; sources in "src" sub directory, checkout and install
-             ;; with `package-vc-install' (on ELPA)
-             (test-package-7
-              ,(expand-file-name "test-package-7" package-user-dir)
-              "src"
-              package-vc-tests-install-from-elpa)
-             ;; sources in "src" sub directory, checkout with
-             ;; `package-vc-checktout' and install with
-             ;; `package-vc-install-from-checkout' (on ELPA)
-             (test-package-8
-              ,(expand-file-name "test-package-8" package-vc-tests-dir)
-              nil
-              pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
-             ;; sources in "custom-dir" sub directory, checkout and
-             ;; install with `package-vc-install' (on ELPA)
-             (test-package-9
-              ,(expand-file-name "test-package-9" package-user-dir)
-              "custom-dir"
-              package-vc-tests-install-from-elpa)))
+          (package-vc-tests-packages (package-vc-tests-packages))
           ;; - create a test package bundle
           (package-vc-tests-repository
            (let* ((pkg-name (symbol-name ,pkg))
@@ -482,6 +489,66 @@ names."
           ;;   causes problems when this macro deletes the temporary
           ;;   directory after body execution.
           (default-directory package-vc-tests-dir))
+     ,@body))
+
+(defun package-vc-tests-environment-tear-down (pkg)
+  "Tear down test environment for PKG.
+Unbind package defined symbols, and remove package defined features and
+entries from `load-path',`load-history', and `Info-directory-list'.
+Delete temporary directories and buffers produced by tests, except for
+when PKG matches `package-vc-tests-preserve-artefacts'."
+  (let ((pattern (rx string-start (literal package-vc-tests-dir))))
+    (dolist (entry load-history)
+      (when-let* ((file (car-safe entry))
+                  ((stringp file))
+                  ((string-match pattern file)))
+        (dolist (elt (cdr entry))
+          (pcase elt
+            (`(defun . ,fun)
+             (fmakunbound fun))
+            (`(provide . ,feat)
+             (setq features (cl-remove feat features)))
+            ((and (pred symbolp)
+                  (pred boundp))
+             (makunbound elt))))))
+    (setq load-path (cl-remove-if
+                     (lambda (path)
+                       (and (stringp path)
+                            (string-match pattern path)))
+                     load-path)
+          load-history (cl-remove-if
+                        (lambda (entry)
+                          (and-let* ((path (car-safe entry))
+                                     (_ (stringp path)))
+                            (string-match pattern path)))
+                        load-history)
+          Info-directory-list (cl-remove-if
+                               (lambda (dir)
+                                 (and (stringp dir)
+                                      (string-match pattern dir)))
+                               Info-directory-list)))
+  (let ((buffers
+         (delq nil
+               (mapcar (lambda (type)
+                         (get-buffer
+                          (package-vc-tests-log-buffer-name type
+                                                            pkg)))
+                       '(doc make)))))
+    (if (or (memq package-vc-tests-preserve-artefacts `(t ,pkg))
+            (and (listp package-vc-tests-preserve-artefacts)
+                 (memq pkg package-vc-tests-preserve-artefacts)))
+        (message
+         "package-vc-tests: preserving temporary directory: %s%s"
+         package-vc-tests-dir
+         (and buffers (format " and buffers: %s" buffers)))
+      (delete-directory package-vc-tests-dir t)
+      (dolist (buffer buffers)
+        (kill-buffer buffer)))))
+
+(defmacro with-package-vc-tests-installed (pkg &rest body)
+  "Eval BODY with PKG installed in a test environment."
+  (declare (indent 1) (debug t))
+  `(with-package-vc-tests-environment ,pkg
      (unwind-protect
          (progn
            (funcall (or (caddr (alist-get ,pkg package-vc-tests-packages))
@@ -492,56 +559,7 @@ names."
                             pkg))))
                     ,pkg)
            ,@body)
-       ;; Unbind package defined symbols, and remove package defined
-       ;; features and entries from `load-path',`load-history', and
-       ;; `Info-directory-list'.
-       (let ((pattern (rx string-start (literal package-vc-tests-dir))))
-         (dolist (entry load-history)
-           (when-let* ((file (car-safe entry))
-                       ((stringp file))
-                       ((string-match pattern file)))
-             (dolist (elt (cdr entry))
-               (pcase elt
-                 (`(defun . ,fun)
-                  (fmakunbound fun))
-                 (`(provide . ,feat)
-                  (setq features (cl-remove feat features)))
-                 ((and (pred symbolp)
-                       (pred boundp))
-                  (makunbound elt))))))
-         (setq load-path (cl-remove-if
-                          (lambda (path)
-                            (and (stringp path)
-                                 (string-match pattern path)))
-                          load-path)
-               load-history (cl-remove-if
-                             (lambda (entry)
-                               (and-let* ((path (car-safe entry))
-                                          (_ (stringp path)))
-                                 (string-match pattern path)))
-                             load-history)
-               Info-directory-list (cl-remove-if
-                                    (lambda (dir)
-                                      (and (stringp dir)
-                                           (string-match pattern dir)))
-                                    Info-directory-list)))
-       (let ((buffers
-              (delq nil
-                    (mapcar (lambda (type)
-                              (get-buffer
-                               (package-vc-tests-log-buffer-name type
-                                                                 ,pkg)))
-                            '(doc make)))))
-         (if (or (memq package-vc-tests-preserve-artefacts '(t ,pkg))
-                 (and (listp package-vc-tests-preserve-artefacts)
-                      (memq ,pkg package-vc-tests-preserve-artefacts)))
-             (message
-              "package-vc-tests: preserving temporary directory: %s%s"
-              package-vc-tests-dir
-              (and buffers (format " and buffers: %s" buffers)))
-           (delete-directory package-vc-tests-dir t)
-           (dolist (buffer buffers)
-             (kill-buffer buffer)))))))
+       (package-vc-tests-environment-tear-down ,pkg))))
 
 (defun package-vc-tests-install-from-elpa (pkg)
   "Install PKG with `package-vc-install'."
