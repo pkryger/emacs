@@ -42,29 +42,13 @@
 (require 'ert-x)
 (require 'ert)
 
-(eval-and-compile
-  ;; We evaluate the definition at compile-time as well, so that
-  ;; `package-vc-test-deftest' can use the value.
-  (defvar package-vc-tests-under-test
-    '(test-package-1
-      test-package-2
-      test-package-3
-      test-package-4
-      test-package-5
-      test-package-6
-      test-package-7
-      test-package-8
-      test-package-9)
-    "List of packages names to test.
-See function `package-vc-tests-packages' for definitions of packages."))
-
 (defvar package-vc-tests-preserve-artefacts nil
   "When non-nil preserve temporary files and buffers produced by tests.
 Each test produces a new temporary directory for each package under
-test.  This leads to creation of [length of
-`package-vc-tests-under-test'] times [number of tests executed]
-temporary directories for each tests run.  Tests create temporary
-directories with `make-temp-file', which see.
+test.  This leads to creation of [length of `package-vc-tests-packages']
+times [number of tests executed] temporary directories for each tests
+run.  Tests create temporary directories with `make-temp-file', which
+see.
 
 In addition some tests may produce temporary buffers, for example when
 building a documentation.
@@ -83,64 +67,70 @@ preserve all temporary directories.")
 
 (defun package-vc-tests-packages ()
   "Return a list of package definitions to test.
-Each entry is in a form of (PKG CHECKOUT-DIR LISP-DIR INSTALL-FUN),
-where PKG is a package name (a symbol), CHECKOUT-DIR is an expected
-checkout directory, LISP-DIR is a directory with package's
-sources (relative to CHECKOUT-DIR), and INSTALL-FUN is a function that
-checkouts and install the package."
-  `(;; checkout and install with `package-vc-install' (on ELPA)
-    (test-package-1
-     ,(expand-file-name "test-package-1" package-user-dir)
-     nil
-     package-vc-tests-install-from-elpa)
-    ;; checkout and install with `package-vc-install' (not on ELPA)
-    (test-package-2
-     ,(expand-file-name "test-package-2" package-user-dir)
-     nil
-     package-vc-tests-install-from-spec)
-    ;; checkout with `package-vc-checktout' and install with
-    ;; `package-vc-install-from-checkout' (on ELPA)
-    (test-package-3
-     ,(expand-file-name "test-package-3" package-vc-tests-dir)
-     nil
-     package-vc-tests-checkout-from-elpa-install-from-checkout)
-    ;; checkout with git and install with
-    ;; `package-vc-install-from-checkout'
-    (test-package-4
-     ,(expand-file-name "test-package-4" package-vc-tests-dir)
-     nil
-     package-vc-tests-checkout-with-git-install-from-checkout)
-    ;; sources in "lisp" sub directory, checkout and install with
-    ;; `package-vc-install' (not on ELPA)
-    (test-package-5
-     ,(expand-file-name "test-package-5" package-user-dir)
-     "lisp"
-     package-vc-tests-install-from-spec)
-    ;; sources in "lisp" sub directory, checkout with git and install
-    ;; with `package-vc-install-from-checkout'
-    (test-package-6
-     ,(expand-file-name "test-package-6" package-vc-tests-dir)
-     "lisp"
-     package-vc-tests-checkout-with-git-install-from-checkout)
-    ;; sources in "src" sub directory, checkout and install with
-    ;; `package-vc-install' (on ELPA)
-    (test-package-7
-     ,(expand-file-name "test-package-7" package-user-dir)
-     "src"
-     package-vc-tests-install-from-elpa)
-    ;; sources in "src" sub directory, checkout with
-    ;; `package-vc-checktout' and install with
-    ;; `package-vc-install-from-checkout' (on ELPA)
-    (test-package-8
-     ,(expand-file-name "test-package-8" package-vc-tests-dir)
-     nil
-     package-vc-tests-checkout-from-elpa-install-from-checkout)
-    ;; sources in "custom-dir" sub directory, checkout and install with
-    ;; `package-vc-install' (on ELPA)
-    (test-package-9
-     ,(expand-file-name "test-package-9" package-user-dir)
-     "custom-dir"
-     package-vc-tests-install-from-elpa)))
+When variable `package-vc-tests-packages' is bound then return its
+value.  If `package-vc-tests-dir' is bound then each entry is in a form
+of (PKG CHECKOUT-DIR LISP-DIR INSTALL-FUN), where PKG is a package
+name (a symbol), CHECKOUT-DIR is an expected checkout directory,
+LISP-DIR is a directory with package's sources (relative to
+CHECKOUT-DIR), and INSTALL-FUN is a function that checkouts and install
+the package.  Otherwise each entry is in a form of PKG."
+  (if (boundp 'package-vc-tests-packages)
+      package-vc-tests-packages
+    (cl-macrolet ((test-package-def
+                  (pkg checkout-dir-exp lisp-dir install-fun)
+                  `(if (boundp 'package-vc-tests-dir)
+                       (list
+                        ',pkg
+                        (expand-file-name (symbol-name ',pkg)
+                                          ,checkout-dir-exp)
+                        ,lisp-dir
+                        #',install-fun)
+                    ',pkg)))
+      (list
+       ;; checkout and install with `package-vc-install' (on ELPA)
+       (test-package-def
+        test-package-1 package-user-dir nil
+        package-vc-tests-install-from-elpa)
+        ;; checkout and install with `package-vc-install' (not on ELPA)
+        (test-package-def
+         test-package-2 package-user-dir nil
+         package-vc-tests-install-from-spec)
+        ;; checkout with `package-vc-checktout' and install with
+        ;; `package-vc-install-from-checkout' (on ELPA)
+        (test-package-def
+         test-package-3 package-vc-tests-dir nil
+         package-vc-tests-checkout-from-elpa-install-from-checkout)
+        ;; checkout with git and install with
+        ;; `package-vc-install-from-checkout'
+        (test-package-def
+         test-package-4 package-vc-tests-dir nil
+         package-vc-tests-checkout-with-git-install-from-checkout)
+        ;; sources in "lisp" sub directory, checkout and install with
+        ;; `package-vc-install' (not on ELPA)
+        (test-package-def
+         test-package-5 package-user-dir "lisp"
+         package-vc-tests-install-from-spec)
+        ;; sources in "lisp" sub directory, checkout with git and
+        ;; install with `package-vc-install-from-checkout'
+        (test-package-def
+         test-package-6 package-vc-tests-dir "lisp"
+         package-vc-tests-checkout-with-git-install-from-checkout)
+        ;; sources in "src" sub directory, checkout and install with
+        ;; `package-vc-install' (on ELPA)
+        (test-package-def
+         test-package-7 package-user-dir "src"
+         package-vc-tests-install-from-elpa)
+        ;; sources in "src" sub directory, checkout with
+        ;; `package-vc-checktout' and install with
+        ;; `package-vc-install-from-checkout' (on ELPA)
+        (test-package-def
+         test-package-8 package-vc-tests-dir nil
+         package-vc-tests-checkout-from-elpa-install-from-checkout)
+        ;; sources in "custom-dir" sub directory, checkout and install
+        ;; with `package-vc-install' (on ELPA)
+        (test-package-def
+         test-package-9  package-user-dir "custom-dir"
+         package-vc-tests-install-from-elpa)))))
 
 ;; TODO: add test for deleting packages, with asserting
 ;; `package-vc-selected-packages'
@@ -653,10 +643,11 @@ Return nil on timeout or the value of last form in BODY."
          (remove-hook 'vc-post-command-functions ,post-vc-command-sym)))))
 
 (defmacro package-vc-test-deftest (name args &rest body)
-  "For each `package-vc-tests-under-test' define a test with NAME.
+  "For each package under test define a test with NAME.
+Use function `package-vc-tests-packages' to obtain packages under test.
 Execute BODY as a test body with a package under test installed.  Bind
-car of ARGS (a symbol) to name of the package.  Bind cdr of ARGS
-before installing the package."
+car of ARGS (a symbol) to name of the package.  Bind cdr of ARGS before
+installing the package."
   (declare (debug (&define [&name "test@" symbolp]
 			   sexp
 			   def-body))
@@ -667,7 +658,7 @@ before installing the package."
     (error "`package-vc' tests first argument has to be a symbol"))
   (let ((file (or (macroexp-file-name) buffer-file-name))
         (tests '()))
-    (dolist (pkg package-vc-tests-under-test)
+    (dolist (pkg (package-vc-tests-packages))
       (let ((name (intern (format "package-vc-tests-%s/%s" name pkg))))
         (push
          `(cl-macrolet ((skip-when (form) `(ert--skip-when ,form))
