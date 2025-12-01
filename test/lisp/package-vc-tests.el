@@ -103,7 +103,7 @@ checkouts and install the package."
     (test-package-3
      ,(expand-file-name "test-package-3" package-vc-tests-dir)
      nil
-     pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
+     package-vc-tests-checkout-from-elpa-install-from-checkout)
     ;; checkout with git and install with
     ;; `package-vc-install-from-checkout'
     (test-package-4
@@ -134,7 +134,7 @@ checkouts and install the package."
     (test-package-8
      ,(expand-file-name "test-package-8" package-vc-tests-dir)
      nil
-     pakcage-vc-tests-checkout-from-elpa-install-from-checkout)
+     package-vc-tests-checkout-from-elpa-install-from-checkout)
     ;; sources in "custom-dir" sub directory, checkout and install with
     ;; `package-vc-install' (on ELPA)
     (test-package-9
@@ -220,7 +220,7 @@ is to mimic `package-vc--read-package-desc'."
   (file-name-concat (package-vc-tests-package-lisp-dir pkg)
                     (format "%s.el" pkg)))
 
-;; When `pakckage-vc-upgrade', `package-vc-rebuild', or other a
+;; When `package-vc-upgrade', `package-vc-rebuild', or other a
 ;; package-vc function re-compiles a package's source the package also
 ;; reloaded [1] to ensure that the most recent version of compiled code
 ;; is available to Emacs.  Some tests add markers in `load-history'
@@ -435,7 +435,7 @@ names."
             when (memq
                   fn
                   '(package-vc-tests-install-from-elpa
-                    pakcage-vc-tests-checkout-from-elpa-install-from-checkout))
+                    package-vc-tests-checkout-from-elpa-install-from-checkout))
             collect name))
           ;; - make test packages recognisable by `package' and
           ;;   `package-vc' internals:
@@ -581,7 +581,7 @@ when PKG matches `package-vc-tests-preserve-artefacts'."
                  (plist-get (package-vc-tests-package-spec pkg)
                             :url))))
 
-(defun pakcage-vc-tests-checkout-from-elpa-install-from-checkout (pkg)
+(defun package-vc-tests-checkout-from-elpa-install-from-checkout (pkg)
   "Install PKG with `package-vc-install-from-checkout'.
 Make checkout with `package-vc-checkout'."
   (let ((checkout-dir (car (alist-get pkg package-vc-tests-packages))))
